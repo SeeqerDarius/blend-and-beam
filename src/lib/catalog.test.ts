@@ -1,0 +1,1 @@
+import{describe,expect,it}from"vitest";import{money,products}from"./catalog";describe("catalog",()=>{it("formats exact minor units",()=>expect(money(485000)).toContain("4,850"));it("has unique slugs",()=>expect(new Set(products.map(p=>p.slug)).size).toBe(products.length))});

@@ -1,0 +1,1 @@
+"use client";export default function ErrorPage({reset}:{reset:()=>void}){return <main className="page-intro"><p className="eyebrow">SOMETHING WENT WRONG</p><h1>Please try again.</h1><p>We could not complete that request. No payment has been taken.</p><button className="button button-dark" onClick={reset}>Try again</button></main>}

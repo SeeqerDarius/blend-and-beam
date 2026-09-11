@@ -1,0 +1,1 @@
+import type{MetadataRoute}from"next";import{products}from"@/lib/catalog";export default function sitemap():MetadataRoute.Sitemap{const b=process.env.NEXT_PUBLIC_APP_URL??"http://localhost:3000";return["","/shop","/about","/contact","/faq"].map(p=>({url:b+p,lastModified:new Date()})).concat(products.map(p=>({url:`${b}/products/${p.slug}`,lastModified:new Date()})))}
