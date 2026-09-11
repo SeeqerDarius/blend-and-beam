@@ -1,0 +1,1 @@
+import{StoreHeader}from"./store-header";export function InfoPage({eyebrow,title,children}:{eyebrow:string;title:string;children:React.ReactNode}){return <><StoreHeader/><main className="page-intro info-page"><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{children}</main></>}
