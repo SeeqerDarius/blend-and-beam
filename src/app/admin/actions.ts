@@ -1,7 +1,7 @@
 "use server";
-import {redirect} from "next/navigation";import {revalidatePath} from "next/cache";import {z} from "zod";import {requireStaff} from "@/lib/admin-auth";import {resources} from "@/lib/admin-resources";
+import {redirect} from "next/navigation";import {revalidatePath,revalidateTag} from "next/cache";import {z} from "zod";import {requireStaff} from "@/lib/admin-auth";import {resources} from "@/lib/admin-resources";
 const uuid=z.string().uuid();
-function done(section:string,error?:string):never{if(!error){revalidatePath("/admin","layout");revalidatePath("/","layout");}redirect("/admin/"+section+(error?"?error="+encodeURIComponent(error):"?saved=1"));}
+function done(section:string,error?:string):never{if(!error){revalidatePath("/admin","layout");revalidatePath("/","layout");revalidateTag("catalog","max");}redirect("/admin/"+section+(error?"?error="+encodeURIComponent(error):"?saved=1"));}
 export async function saveResource(form:FormData){
  const section=String(form.get("resource")??"");const config=resources[section];if(!config)redirect("/access-denied");
  const {db}=await requireStaff(config.permission);
