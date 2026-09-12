@@ -1,0 +1,9 @@
+import "server-only";
+import {createClient} from "@/lib/supabase/server";
+import {products as presentationFixtures,type Product} from "@/lib/catalog";
+
+type ProductRow={slug:string;name:string;description:string|null;price_minor:number;compare_at_minor:number|null;is_featured:boolean;is_best_seller:boolean;product_categories:Array<{categories:{name:string;slug:string}|null}>};
+const tones=["rose","stone","ink","sage","camel","pearl"];
+function mapProduct(row:ProductRow,index:number):Product{const fixture=presentationFixtures.find(p=>p.slug===row.slug);const category=row.product_categories?.[0]?.categories;return{slug:row.slug,name:row.name,category:category?.name??"Uncategorised",categorySlug:category?.slug,price:Number(row.price_minor),compareAt:row.compare_at_minor==null?undefined:Number(row.compare_at_minor),badge:row.is_best_seller?"BEST SELLER":row.is_featured?"FEATURED":undefined,tone:fixture?.tone??tones[index%tones.length],description:row.description??"",specs:fixture?.specs??[]};}
+export async function getCatalog(){const db=await createClient();const [productResult,categoryResult]=await Promise.all([db.from("products").select("slug,name,description,price_minor,compare_at_minor,is_featured,is_best_seller,product_categories(categories(name,slug))").eq("status","active").order("created_at"),db.from("categories").select("name,slug,description").eq("is_active",true).order("sort_order")]);if(productResult.error||categoryResult.error)throw new Error("Unable to load the store catalog.");return{products:(productResult.data as unknown as ProductRow[]).map(mapProduct),categories:(categoryResult.data??[]).map(c=>({name:c.name,slug:c.slug,subtitle:c.description??""}))};}
+export async function getProduct(slug:string){const {products}=await getCatalog();return products.find(product=>product.slug===slug);}
