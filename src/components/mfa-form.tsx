@@ -1,0 +1,10 @@
+"use client";
+import {useState} from "react";import Image from "next/image";import {createClient} from "@/lib/supabase/browser";
+export function MfaForm({staff}:{staff:boolean}){
+const [factor,setFactor]=useState("");const [qr,setQr]=useState("");const [code,setCode]=useState("");const [message,setMessage]=useState("");const [busy,setBusy]=useState(false);
+async function start(){setBusy(true);setMessage("");try{const db=createClient();const list=await db.auth.mfa.listFactors();if(list.error)throw list.error;const verified=list.data.totp.find(f=>f.status==="verified");
+if(verified){setFactor(verified.id);setMessage("Enter the current six-digit code from your authenticator.");}
+else{const result=await db.auth.mfa.enroll({factorType:"totp",friendlyName:"Blend & Beam "+Date.now(),issuer:"Blend & Beam"});if(result.error)throw result.error;setFactor(result.data.id);setQr(result.data.totp.qr_code);}}
+catch{setMessage("Could not start verification. Please sign in again or retry.");}finally{setBusy(false);}}
+async function verify(e:React.FormEvent){e.preventDefault();setBusy(true);setMessage("");try{const result=await createClient().auth.mfa.challengeAndVerify({factorId:factor,code});if(result.error)throw result.error;window.location.assign(staff?"/admin":"/account");}catch{setMessage("Code not accepted. Enter the latest code and try again.");}finally{setBusy(false);}}
+return <div className="stack-form">{!factor?<button className="button button-dark" disabled={busy} onClick={start}>{busy?"Starting…":"Set up or verify authenticator"}</button>:<form className="stack-form" onSubmit={verify}>{qr&&<><p>Scan this QR code with your authenticator app. Keep it private.</p><Image unoptimized src={qr} width={220} height={220} alt="Private authenticator setup QR code"/></>}<label>Six-digit code<input value={code} onChange={e=>setCode(e.target.value)} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label><button className="button button-dark" disabled={busy}>{busy?"Verifying…":"Verify and continue"}</button></form>}{message&&<p role="status">{message}</p>}</div>;}
