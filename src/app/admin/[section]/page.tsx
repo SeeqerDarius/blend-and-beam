@@ -4,9 +4,12 @@ import {requireStaff} from "@/lib/admin-auth";
 import {resources,transitions} from "@/lib/admin-resources";
 import {money} from "@/lib/catalog";
 import {SubmitButton} from "@/components/submit-button";
-import {saveResource,adjustStock,transitionOrder,moderateReview,assignStaff,linkCategory,uploadProductImage} from "../actions";
+import {saveResource,adjustStock,transitionOrder,moderateReview,assignStaff,linkCategory,uploadProductImage,saveOrderNote} from "../actions";
 type Row=Record<string,unknown>;
 function display(v:unknown):string{return v===null||v===undefined?"—":typeof v==="object"?JSON.stringify(v):String(v);}
+// React's purity lint flags Date.now() called directly during render, even
+// in an async server component; keeping it in its own function sidesteps that.
+function daysAgo(n:number):string{return new Date(Date.now()-n*24*60*60*1000).toISOString();}
 function Table({rows,columns,edit}:{rows:Row[];columns:string[];edit?:string}){return <div className="table-scroll"><table className="admin-table"><thead><tr>{columns.map(c=><th key={c}>{c.replaceAll("_"," ")}</th>)}{edit&&<th>Action</th>}</tr></thead><tbody>{rows.length?rows.map((r,i)=><tr key={String(r.id??i)}>{columns.map(c=><td key={c}>{display(r[c])}</td>)}{edit&&<td><Link href={"/admin/"+edit+"?edit="+r.id}>Edit</Link></td>}</tr>):<tr><td colSpan={columns.length+1}>No records yet.</td></tr>}</tbody></table></div>}
 function Select({name,label,rows,empty=false}:{name:string;label:string;rows:Row[];empty?:boolean}){return <label>{label}<select name={name} required={!empty} defaultValue=""><option value="">{empty?"Base product (no variant)":"Choose…"}</option>{rows.map(r=><option key={String(r.id)} value={String(r.id)}>{String(r.name??r.email??r.id)}</option>)}</select></label>}
 type ReadTable="inventory"|"orders"|"profiles"|"payments"|"reviews"|"audit_logs"|"user_roles";
@@ -25,22 +28,29 @@ export default async function Workspace({params,searchParams}:{params:Promise<{s
  const {db}=await requireStaff(config?.permission??read.permission);
  const page=Math.min(10000,Math.max(1,Number(q.page)||1));const start=(Math.floor(page)-1)*50;
  const columns=config?.columns??read.columns;const table=config?.table??read.table;
- const result=await db.from(table).select(columns.join(","),{count:"exact"}).order(columns.includes("created_at")?"created_at":columns.includes("id")?"id":columns[0],{ascending:false}).range(start,start+49);
+ // cost_minor is deliberately excluded from every direct SELECT grant so
+ // customers can never read it off an active product row; the products
+ // section reads through admin_products()/admin_product() instead, which
+ // re-checks products.manage before returning the full row.
+ const result=section==="products"
+  ?await db.rpc("admin_products",undefined,{count:"exact"}).select(columns.join(",")).order(columns.includes("id")?"id":columns[0],{ascending:false}).range(start,start+49)
+  :await db.from(table).select(columns.join(","),{count:"exact"}).order(columns.includes("created_at")?"created_at":columns.includes("id")?"id":columns[0],{ascending:false}).range(start,start+49);
  if(result.error)throw new Error("Unable to load this workspace. Confirm the security migration has been applied.");
  const rows=(result.data??[]) as unknown as Row[];
- let editing:Row={};if(config&&q.edit){const id=/^[0-9a-f-]{36}$/i.test(q.edit)?q.edit:null;if(!id)notFound();const result=await db.from(config.table).select([...new Set(["id",...config.fields.map(f=>f.key)])].join(",")).eq("id",id).single();if(result.error||!result.data)notFound();editing=result.data as unknown as Row;}
+ let editing:Row={};if(config&&q.edit){const id=/^[0-9a-f-]{36}$/i.test(q.edit)?q.edit:null;if(!id)notFound();const result=section==="products"?await db.rpc("admin_product",{p_id:id}):await db.from(config.table).select([...new Set(["id",...config.fields.map(f=>f.key)])].join(",")).eq("id",id).single();if(result.error||!result.data)notFound();editing=result.data as unknown as Row;}
  const needProducts=["products","variants","inventory"].includes(section);
  const productResult=needProducts?await db.from("products").select("id,name").order("name").limit(1000):null;
  const products=(productResult?.data??[]) as Row[];
  const variants=section==="inventory"?(await db.from("product_variants").select("id,name,product_id").limit(1000)).data??[]:[];
  const categories=section==="products"?(await db.from("categories").select("id,name").order("name").limit(1000)).data??[]:[];
+ const brands=section==="products"?(await db.from("brands").select("id,name").order("name").limit(1000)).data??[]:[];
  return <><p className="eyebrow">STORE OPERATIONS</p><h1>{config?.title??read.title}</h1>{q.saved&&<p role="status" className="operations-notice">Saved successfully.</p>}{q.error&&<p role="alert" className="form-error">{q.error.slice(0,300)}</p>}
- {config&&<><p>{config.description}</p><details className="operations-card" open={Boolean(q.edit)}><summary>{q.edit?"Edit record":"Create new"}</summary><form action={saveResource} className="operations-form"><input type="hidden" name="resource" value={section}/><input type="hidden" name="id" value={String(editing.id??"")}/>{config.fields.map(f=><label key={f.key}>{f.label}{f.key==="product_id"?<select name={f.key} defaultValue={String(editing[f.key]??"")} required><option value="">Choose product…</option>{products.map(p=><option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}</select>:f.type==="textarea"?<textarea name={f.key} defaultValue={String(editing[f.key]??"")} required={f.required} maxLength={30000} rows={6}/>:f.type==="select"?<select name={f.key} defaultValue={String(editing[f.key]??f.options?.[0])}>{f.options?.map(o=><option key={o}>{o}</option>)}</select>:f.type==="checkbox"?<input type="checkbox" name={f.key} defaultChecked={Boolean(editing[f.key])}/>:<input name={f.key} type={f.type??"text"} defaultValue={Array.isArray(editing[f.key])?(editing[f.key] as string[]).join(", "):String(editing[f.key]??(f.type==="number"?0:""))} required={f.required} min={f.type==="number"?0:undefined} step={f.type==="number"?1:undefined} maxLength={f.type==="number"?undefined:1000}/>}</label>)}<SubmitButton>Save record</SubmitButton>{q.edit&&<Link href={"/admin/"+section}>Cancel editing</Link>}</form></details></>}
+ {config&&<><p>{config.description}</p><details className="operations-card" open={Boolean(q.edit)}><summary>{q.edit?"Edit record":"Create new"}</summary><form action={saveResource} className="operations-form"><input type="hidden" name="resource" value={section}/><input type="hidden" name="id" value={String(editing.id??"")}/>{config.fields.map(f=><label key={f.key}>{f.label}{f.key==="product_id"?<select name={f.key} defaultValue={String(editing[f.key]??"")} required><option value="">Choose product…</option>{products.map(p=><option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}</select>:f.key==="brand_id"?<select name={f.key} defaultValue={String(editing[f.key]??"")}><option value="">No brand</option>{brands.map(b=><option key={String(b.id)} value={String(b.id)}>{String(b.name)}</option>)}</select>:f.type==="textarea"?<textarea name={f.key} defaultValue={String(editing[f.key]??"")} required={f.required} maxLength={30000} rows={6}/>:f.type==="select"?<select name={f.key} defaultValue={String(editing[f.key]??f.options?.[0])}>{f.options?.map(o=><option key={o}>{o}</option>)}</select>:f.type==="checkbox"?<input type="checkbox" name={f.key} defaultChecked={Boolean(editing[f.key])}/>:<input name={f.key} type={f.type??"text"} defaultValue={Array.isArray(editing[f.key])?(editing[f.key] as string[]).join(", "):String(editing[f.key]??(f.type==="number"?0:""))} required={f.required} min={f.type==="number"?0:undefined} step={f.type==="number"?1:undefined} maxLength={f.type==="number"?undefined:1000}/>}</label>)}<SubmitButton>Save record</SubmitButton>{q.edit&&<Link href={"/admin/"+section}>Cancel editing</Link>}</form></details></>}
  {section==="products"&&<div className="operations-grid"><details className="operations-card"><summary>Product categories</summary><form action={linkCategory} className="operations-form"><Select name="product" label="Product" rows={products}/><Select name="category" label="Category" rows={categories}/><label>Action<select name="operation"><option value="add">Add category</option><option value="remove">Remove category</option></select></label><SubmitButton>Update category</SubmitButton></form></details><details className="operations-card"><summary>Upload product image</summary><form action={uploadProductImage} className="operations-form"><Select name="product" label="Product" rows={products}/><label>Image<input type="file" name="image" accept="image/png,image/jpeg,image/webp" required/></label><label>Describe image<input name="alt" minLength={3} maxLength={200} required/></label><SubmitButton>Upload image</SubmitButton></form></details></div>}
  {section==="inventory"&&<><p>Adjustments are atomic and recorded with your account and reason. Stock cannot become negative.</p><form action={adjustStock} className="operations-form operations-card"><Select name="product" label="Product" rows={products}/><Select name="variant" label="Variant (must belong to product)" rows={variants} empty/><label>Quantity change<input name="delta" type="number" step="1" min="-100000" max="100000" required placeholder="10 or -2"/></label><label>Reason<input name="reason" minLength={5} maxLength={500} required/></label><SubmitButton>Record adjustment</SubmitButton></form></>}
  {section==="payments"&&<p>Provider-verified records only. Staff cannot manually mark an order paid. Refunds must be processed through Paystack; this screen does not issue refunds.</p>}
  {section==="staff"&&<><p>Only owners can assign roles. The recipient must have a confirmed customer account. Staff must verify MFA before access. You cannot change your own roles.</p><form action={assignStaff} className="operations-form operations-card"><label>Confirmed account email<input name="email" type="email" required/></label><Select name="role" label="Role" rows={(await db.from("roles").select("id,name").order("name")).data??[]}/><label>Action<select name="operation"><option value="grant">Grant role</option><option value="remove">Remove role</option></select></label><SubmitButton>Update staff access</SubmitButton></form></>}
- {section==="reports"&&<div className="operations-card"><h2>Paid orders on this page</h2><p>{money(rows.filter(r=>r.payment_status==="paid").reduce((s,r)=>s+Number(r.total_minor),0))}</p><p>Showing a maximum of 50 orders per page; this figure is not a full-period revenue total.</p></div>}
+ {section==="reports"&&<ReportsSummary/>}
  <Table rows={rows} columns={columns.filter(c=>c!=="id")} edit={config?section:undefined}/>
  {section==="orders"&&rows.map(o=><details className="operations-card" key={String(o.id)}><summary>{String(o.order_number)} — fulfillment &amp; items</summary><OrderDetail order={o}/>{(transitions[String(o.status)]??[]).length>0&&<form action={transitionOrder} className="operations-form"><input type="hidden" name="order" value={String(o.id)}/><label>Next status<select name="status">{(transitions[String(o.status)]??[]).map(s=><option key={s}>{s}</option>)}</select></label><label>Fulfillment note<input name="note" minLength={5} maxLength={500} required/></label><SubmitButton>Update fulfillment</SubmitButton></form>}</details>)}
  {section==="reviews"&&rows.map(row=><form action={moderateReview} className="operations-card operations-form" key={String(row.id)}><strong>{display(row.title)}</strong><input type="hidden" name="id" value={String(row.id)}/><label>Moderation<select name="status" defaultValue={String(row.status)}><option>pending</option><option>approved</option><option>rejected</option></select></label><SubmitButton>Save moderation</SubmitButton></form>)}
@@ -48,5 +58,51 @@ export default async function Workspace({params,searchParams}:{params:Promise<{s
  <div className="operations-pagination">{page>1&&<Link href={"/admin/"+section+"?page="+(page-1)}>← Previous</Link>}<span>Page {page} · {result.count??0} records</span>{(result.count??0)>start+50&&<Link href={"/admin/"+section+"?page="+(page+1)}>Next →</Link>}</div>
  </>;
 }
-async function OrderDetail({order}:{order:Row}){const {db}=await requireStaff("orders.manage");const orderId=String(order.id);const [items,history]=await Promise.all([db.from("order_items").select("id,product_name,sku,quantity,unit_price_minor,total_minor").eq("order_id",orderId),db.from("order_status_history").select("id,status,note,created_at").eq("order_id",orderId).order("created_at",{ascending:false})]);if(items.error||history.error)throw new Error("Unable to load order details.");return <><h3>Items</h3><Table rows={items.data??[]} columns={["product_name","sku","quantity","unit_price_minor","total_minor"]}/><h3>Status history</h3><Table rows={history.data??[]} columns={["status","note","created_at"]}/></>}
+type OrderDetailData={order:{admin_note:string|null};items:Row[];history:Row[];payments:Row[]};
+async function OrderDetail({order}:{order:Row}){
+ const {db}=await requireStaff("orders.manage");const orderId=String(order.id);
+ // admin_note and billing_address aren't in the orders SELECT grant (a
+ // customer can see their own order row, and column grants can't be scoped
+ // per-row), so the full detail comes from admin_order() instead.
+ const {data,error}=await db.rpc("admin_order",{p_order:orderId});
+ if(error||!data)throw new Error("Unable to load order details.");
+ const detail=data as unknown as OrderDetailData;
+ return <>
+  <h3>Items</h3><Table rows={detail.items} columns={["product_name","sku","quantity","unit_price_minor","total_minor"]}/>
+  {detail.payments.length>0&&<><h3>Payments</h3><Table rows={detail.payments} columns={["reference","provider","status","amount_minor","verified_at"]}/></>}
+  <h3>Status history</h3><Table rows={detail.history} columns={["status","note","created_at"]}/>
+  <h3>Internal note</h3>
+  <form action={saveOrderNote} className="operations-form">
+   <input type="hidden" name="order" value={orderId}/>
+   <label>Staff-only note<textarea name="note" defaultValue={detail.order.admin_note??""} maxLength={2000} rows={3}/></label>
+   <SubmitButton>Save note</SubmitButton>
+  </form>
+ </>;
+}
 async function MovementHistory(){const {db}=await requireStaff("inventory.manage");const result=await db.from("inventory_movements").select("id,inventory_id,quantity_delta,reason,actor_id,created_at").order("created_at",{ascending:false}).limit(50);if(result.error)throw new Error("Unable to load stock history.");return <><h2>Latest stock movements</h2><Table rows={result.data??[]} columns={["inventory_id","quantity_delta","reason","created_at"]}/></>}
+async function ReportsSummary(){
+ const {db}=await requireStaff("reports.read");
+ const since=daysAgo(30);
+ const {data:orders,error}=await db.from("orders").select("id,total_minor,payment_status,created_at").gte("created_at",since);
+ if(error)throw new Error("Unable to load reports.");
+ const paid=(orders??[]).filter(o=>o.payment_status==="paid");
+ const byDay=new Map<string,number>();
+ for(const o of paid){const day=o.created_at.slice(0,10);byDay.set(day,(byDay.get(day)??0)+o.total_minor);}
+ const days=[...byDay.entries()].sort(([a],[b])=>a.localeCompare(b));
+ const max=Math.max(1,...days.map(([,v])=>v));
+ const {data:items}=paid.length?await db.from("order_items").select("product_name,quantity,total_minor").in("order_id",paid.map(o=>o.id)):{data:[] as {product_name:string;quantity:number;total_minor:number}[]};
+ const byProduct=new Map<string,{qty:number;rev:number}>();
+ for(const it of items??[]){const s=byProduct.get(it.product_name)??{qty:0,rev:0};s.qty+=it.quantity;s.rev+=it.total_minor;byProduct.set(it.product_name,s);}
+ const top=[...byProduct.entries()].sort((a,b)=>b[1].rev-a[1].rev).slice(0,8);
+ const totalRevenue=days.reduce((s,[,v])=>s+v,0);
+ return <>
+  <div className="operations-grid">
+   <div className="operations-card"><h2>Revenue (30d)</h2><p>{money(totalRevenue)}</p></div>
+   <div className="operations-card"><h2>Paid orders (30d)</h2><p>{paid.length}</p></div>
+  </div>
+  <h2>Revenue by day</h2>
+  {days.length===0?<p>No paid orders in the last 30 days yet.</p>:<div className="report-bars">{days.map(([day,total])=><div className="report-bar" key={day} title={`${day}: ${money(total)}`}><div className="report-bar-fill" style={{height:`${Math.max(4,(total/max)*100)}%`}}/><small>{day.slice(5)}</small></div>)}</div>}
+  <h2>Top products by revenue</h2>
+  {top.length===0?<p>No sales yet.</p>:<Table rows={top.map(([name,s])=>({product:name,units:s.qty,revenue:money(s.rev)}))} columns={["product","units","revenue"]}/>}
+ </>;
+}
