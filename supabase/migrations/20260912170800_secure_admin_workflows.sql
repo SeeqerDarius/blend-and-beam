@@ -1,16 +1,13 @@
--- Reconciled from the Blend & Beam Commerce project (gyjfofawvervookxjvmm), applied 2026-09-12.
--- This file was written back into the repo after being pushed directly; no SQL below was changed.
-
 -- Default-deny access; never derive staff privileges from signup metadata.
 create or replace function private.staff_member() returns boolean language sql stable security definer set search_path='' as $$
-  select exists(select 1 from public.user_roles ur join auth.users u on u.id=ur.user_id
-  where ur.user_id=(select auth.uid()) and u.email_confirmed_at is not null
-  and (u.banned_until is null or u.banned_until < now()));
+ select exists(select 1 from public.user_roles ur join auth.users u on u.id=ur.user_id
+ where ur.user_id=(select auth.uid()) and u.email_confirmed_at is not null
+ and (u.banned_until is null or u.banned_until < now()));
 $$;
 create or replace function private.has_permission(permission_key text) returns boolean language sql stable security definer set search_path='' as $$
-  select private.staff_member() and coalesce((select auth.jwt())->>'aal','')='aal2'
-  and exists(select 1 from auth.sessions s where s.id::text=(select auth.jwt())->>'session_id' and s.user_id=(select auth.uid()))
-  and exists(select 1 from public.user_roles ur join public.role_permissions rp on rp.role_id=ur.role_id join public.permissions p on p.id=rp.permission_id where ur.user_id=(select auth.uid()) and p.key=permission_key);
+ select private.staff_member() and coalesce((select auth.jwt())->>'aal','')='aal2'
+ and exists(select 1 from auth.sessions s where s.id::text=(select auth.jwt())->>'session_id' and s.user_id=(select auth.uid()))
+ and exists(select 1 from public.user_roles ur join public.role_permissions rp on rp.role_id=ur.role_id join public.permissions p on p.id=rp.permission_id where ur.user_id=(select auth.uid()) and p.key=permission_key);
 $$;
 revoke all on function private.staff_member() from public,anon,authenticated;
 revoke all on function private.has_permission(text) from public,anon;
@@ -19,12 +16,12 @@ grant execute on function private.staff_member(),private.has_permission(text) to
 insert into public.permissions(key) values('admin.access'),('reviews.manage'),('content.manage'),('discounts.manage') on conflict do nothing;
 insert into public.role_permissions(role_id,permission_id) select r.id,p.id from public.roles r cross join public.permissions p where r.name='Super Admin' on conflict do nothing;
 insert into public.role_permissions(role_id,permission_id) select r.id,p.id from public.roles r cross join public.permissions p where
-  (r.name='Admin' and p.key not in('staff.manage','settings.manage')) or
-  (r.name='Inventory Manager' and p.key in('admin.access','products.manage','inventory.manage')) or
-  (r.name='Fulfillment' and p.key in('admin.access','orders.manage')) or
-  (r.name='Support' and p.key in('admin.access','customers.read','reviews.manage')) or
-  (r.name='Sales' and p.key in('admin.access','orders.manage','customers.read','reports.read'))
-  on conflict do nothing;
+ (r.name='Admin' and p.key not in('staff.manage','settings.manage')) or
+ (r.name='Inventory Manager' and p.key in('admin.access','products.manage','inventory.manage')) or
+ (r.name='Fulfillment' and p.key in('admin.access','orders.manage')) or
+ (r.name='Support' and p.key in('admin.access','customers.read','reviews.manage')) or
+ (r.name='Sales' and p.key in('admin.access','orders.manage','customers.read','reports.read'))
+ on conflict do nothing;
 
 create or replace function public.staff_membership() returns boolean language sql stable security invoker set search_path='' as $$ select private.staff_member(); $$;
 create or replace function public.has_staff_permission(permission_key text) returns boolean language sql stable security invoker set search_path='' as $$ select private.has_permission(permission_key); $$;
@@ -41,12 +38,12 @@ create policy "staff assignment directory" on public.user_roles for select to au
 
 -- Reset policies and grants on commerce tables to explicit least privilege.
 do $$ declare t text; p record; begin
-  foreach t in array array['profiles','products','product_variants','product_images','product_categories','categories','brands','inventory','inventory_movements','orders','order_items','order_status_history','payments','payment_events','reviews','audit_logs','shipping_zones','discount_codes']
-  loop
-    execute format('alter table public.%I enable row level security',t);
-    execute format('revoke all on public.%I from anon, authenticated',t);
-    for p in select policyname from pg_policies where schemaname='public' and tablename=t loop execute format('drop policy %I on public.%I',p.policyname,t); end loop;
-  end loop;
+ foreach t in array array['profiles','products','product_variants','product_images','product_categories','categories','brands','inventory','inventory_movements','orders','order_items','order_status_history','payments','payment_events','reviews','audit_logs','shipping_zones','discount_codes']
+ loop
+  execute format('alter table public.%I enable row level security',t);
+  execute format('revoke all on public.%I from anon, authenticated',t);
+  for p in select policyname from pg_policies where schemaname='public' and tablename=t loop execute format('drop policy %I on public.%I',p.policyname,t); end loop;
+ end loop;
 end $$;
 -- Cost fields and internal notes are not available to public API readers.
 grant select(id,name,slug,short_description,description,sku,brand_id,price_minor,compare_at_minor,currency,status,track_inventory,allow_backorder,weight_grams,warranty,seo_title,seo_description,is_featured,is_best_seller,published_at,created_at,updated_at) on public.products to anon,authenticated;
@@ -66,7 +63,7 @@ create policy "visible variants" on public.product_variants for select using((st
 create policy "visible images" on public.product_images for select using(exists(select 1 from public.products p where p.id=product_id and p.status='active') or private.has_permission('products.manage'));
 create policy "visible category links" on public.product_categories for select using(exists(select 1 from public.products p where p.id=product_id and p.status='active') or private.has_permission('products.manage'));
 do $$ declare t text; begin foreach t in array array['categories','brands','product_variants','product_images','product_categories'] loop
-  execute format('create policy "staff catalog writes" on public.%I for all to authenticated using(private.has_permission(''products.manage'')) with check(private.has_permission(''products.manage''))',t);
+ execute format('create policy "staff catalog writes" on public.%I for all to authenticated using(private.has_permission(''products.manage'')) with check(private.has_permission(''products.manage''))',t);
 end loop; end $$;
 
 grant select on public.profiles to authenticated;
@@ -169,8 +166,8 @@ if target is null then raise exception 'A confirmed account is required'; end if
 if target=auth.uid() then raise exception 'You cannot change your own roles'; end if;
 if not exists(select 1 from public.roles where id=p_role) then raise exception 'Role not found'; end if;
 if p_remove then
-  if exists(select 1 from public.roles where id=p_role and name='Super Admin') and (select count(*) from public.user_roles where role_id=p_role)<=1 then raise exception 'The last owner cannot be removed'; end if;
-  delete from public.user_roles where user_id=target and role_id=p_role;
+ if exists(select 1 from public.roles where id=p_role and name='Super Admin') and (select count(*) from public.user_roles where role_id=p_role)<=1 then raise exception 'The last owner cannot be removed'; end if;
+ delete from public.user_roles where user_id=target and role_id=p_role;
 else insert into public.user_roles(user_id,role_id) values(target,p_role) on conflict do nothing; end if;
 end $$;
 create or replace function public.assign_staff(p_email text,p_role uuid,p_remove boolean default false) returns void language sql security invoker set search_path='' as $$ select private.assign_staff(p_email,p_role,p_remove); $$;

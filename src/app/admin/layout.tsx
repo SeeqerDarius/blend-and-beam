@@ -1,28 +1,3 @@
-import { redirect } from "next/navigation";
-import { getAdminContext } from "@/lib/admin/context";
-import { AdminShell } from "./_components/admin-shell";
-import { MfaEnroll } from "./_components/mfa-enroll";
-import { MfaChallenge } from "./_components/mfa-challenge";
-
-export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const ctx = await getAdminContext();
-
-  if (ctx.status === "unauthenticated") redirect("/login?next=/admin");
-  if (ctx.status === "not-staff") redirect("/");
-
-  if (ctx.status === "needs-enrollment" || ctx.status === "needs-challenge") {
-    return (
-      <main className="admin-shell admin-shell-locked">
-        <section className="admin-main mfa-gate">
-          {ctx.status === "needs-enrollment" ? <MfaEnroll /> : <MfaChallenge />}
-        </section>
-      </main>
-    );
-  }
-
-  return (
-    <AdminShell email={ctx.email} permissions={ctx.permissions}>
-      {children}
-    </AdminShell>
-  );
-}
+import Link from "next/link";import {BrandLogo} from "@/components/brand-logo";import {requireStaff} from "@/lib/admin-auth";import {adminLinks} from "@/lib/admin-resources";import {signOut} from "@/app/login/actions";
+export const dynamic="force-dynamic";export const metadata={title:"Store administration",robots:{index:false,follow:false}};
+export default async function AdminLayout({children}:{children:React.ReactNode}){const {db,user}=await requireStaff();const links=await Promise.all(adminLinks.map(async l=>({l,allowed:(await db.rpc("has_staff_permission",{permission_key:l[2]})).data===true})));return <div className="operations"><aside className="operations-sidebar"><BrandLogo inverse/><p>STORE OPERATIONS</p><nav aria-label="Administration">{links.filter(x=>x.allowed).map(({l})=><Link key={l[1]} href={l[1]}>{l[0]}</Link>)}</nav><Link href="/account/security">Account security</Link><Link href="/">View storefront</Link><form action={signOut}><button>Sign out everywhere</button></form></aside><main className="operations-main"><div className="operations-top"><span>Verified staff session</span><span>{user.email}</span></div>{children}</main></div>}
