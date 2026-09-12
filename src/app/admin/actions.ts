@@ -5,7 +5,7 @@ function done(section:string,error?:string):never{if(!error){revalidatePath("/ad
 export async function saveResource(form:FormData){
  const section=String(form.get("resource")??"");const config=resources[section];if(!config)redirect("/access-denied");
  const {db}=await requireStaff(config.permission);
- const values:Record<string,unknown>={};for(const f of config.fields)values[f.key]=f.type==="checkbox"?form.get(f.key)==="on":String(form.get(f.key)??"");
+ const values:Record<string,unknown>={};for(const f of config.fields){const raw=String(form.get(f.key)??"");values[f.key]=f.type==="checkbox"?form.get(f.key)==="on":f.type==="money"?Math.round(Number(raw)*100):raw;}
  const parsed=config.schema.safeParse(values);if(!parsed.success)done(section,"Check required fields, formats and numeric limits.");
  const id=String(form.get("id")??"");if(id&&!uuid.safeParse(id).success)done(section,"Invalid record.");
  const payload=parsed.data as Record<string,unknown>;
