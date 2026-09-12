@@ -1,6 +1,10 @@
 import {z} from "zod";
+// Narrowed to just the tables the generic CRUD form actually writes to, so
+// PostgREST's typed client can validate .from(table)/.eq("id",...) calls
+// without every table in the schema being a candidate.
+export type ResourceTable="products"|"product_variants"|"categories"|"brands"|"discount_codes"|"shipping_zones"|"site_content";
 export type Field={key:string;label:string;type?:"text"|"textarea"|"number"|"checkbox"|"select";options?:string[];required?:boolean};
-export type Resource={title:string;table:string;permission:string;columns:string[];fields:Field[];schema:z.ZodType;description:string};
+export type Resource={title:string;table:ResourceTable;permission:string;columns:string[];fields:Field[];schema:z.ZodType;description:string};
 const text=z.string().trim().min(1).max(200), optional=z.string().trim().max(10000), slug=z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(150), uuid=z.string().uuid(), nonnegative=z.coerce.number().int().min(0).max(100000000), bool=z.boolean();
 export const resources:Record<string,Resource>={
 products:{title:"Products",table:"products",permission:"products.manage",columns:["id","name","sku","slug","price_minor","status"],description:"Prices are in pesewas (GHS × 100). Publish only real products ready for sale. Archive products instead of deleting sales history.",fields:[{key:"name",label:"Product name",required:true},{key:"slug",label:"URL slug",required:true},{key:"sku",label:"SKU",required:true},{key:"price_minor",label:"Price in pesewas",type:"number",required:true},{key:"description",label:"Description",type:"textarea"},{key:"warranty",label:"Warranty"},{key:"status",label:"Status",type:"select",options:["draft","active","archived"]},{key:"is_featured",label:"Featured on homepage",type:"checkbox"},{key:"track_inventory",label:"Track inventory",type:"checkbox"}],schema:z.object({name:text,slug,sku:text,price_minor:nonnegative,description:optional,warranty:optional,status:z.enum(["draft","active","archived"]),is_featured:bool,track_inventory:bool})},

@@ -1020,7 +1020,7 @@ export type Database = {
           p_delta: number
           p_product: string
           p_reason: string
-          p_variant?: string
+          p_variant?: string | null
         }
         Returns: undefined
       }

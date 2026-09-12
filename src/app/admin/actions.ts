@@ -9,7 +9,10 @@ export async function saveResource(form:FormData){
  const parsed=config.schema.safeParse(values);if(!parsed.success)done(section,"Check required fields, formats and numeric limits.");
  const id=String(form.get("id")??"");if(id&&!uuid.safeParse(id).success)done(section,"Invalid record.");
  const payload=parsed.data as Record<string,unknown>;
- const result=id?await db.from(config.table).update(payload).eq("id",id).select("id").single():await db.from(config.table).insert(payload).select("id").single();
+ // Every resource has its own Insert/Update shape; a config-driven payload
+ // can't be typed against one of them specifically, so it crosses into the
+ // typed client as `never` (assignable to any expected shape) at this one point.
+ const result=id?await db.from(config.table).update(payload as never).eq("id",id).select("id").single():await db.from(config.table).insert(payload as never).select("id").single();
  if(result.error)done(section,result.error.code==="23505"?"That name, slug, SKU or code is already in use.":"The record could not be saved. Check your permissions and inputs.");
  done(section);
 }
