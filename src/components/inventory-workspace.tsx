@@ -26,8 +26,10 @@ export async function InventoryWorkspace({
       .limit(1000),
     db.from("product_variants").select("id,name,product_id").limit(1000),
   ]);
-  if (stock.error || products.error || variants.error)
+  if (stock.error || products.error || variants.error) {
+    console.error("Inventory lookup failed", {stock:stock.error?.code,products:products.error?.code,variants:variants.error?.code});
     throw new Error("Inventory could not be loaded. Please retry.");
+  }
   const productMap = new Map(products.data.map((p) => [p.id, p]));
   const variantMap = new Map(variants.data.map((v) => [v.id, v]));
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL;

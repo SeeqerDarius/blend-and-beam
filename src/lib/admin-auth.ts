@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export const requireStaff=cache(async function requireStaff(permission = "admin.access") {
  const db = await createClient();
  const {data:{user},error} = await db.auth.getUser();
+ if(error && (!error.status || error.status >= 500)) throw new Error("Your session could not be checked. Please retry.");
  if(error || !user || !user.email_confirmed_at) redirect("/login?next=/admin");
  const member = await db.rpc("staff_membership");
  if(member.error) {console.error("Staff membership lookup failed",member.error.code);throw new Error("Staff access could not be verified. Please retry.");}
