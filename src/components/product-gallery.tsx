@@ -1,0 +1,4 @@
+"use client";
+import {useState} from "react";
+import Image from "next/image";
+export function ProductGallery({images,name,tone}:{images:Array<{url:string;alt:string}>;name:string;tone:string}){const [selected,setSelected]=useState(0);const image=images[selected];return <section aria-label={`${name} images`}><div className={`product-hero-image ${tone}`} style={{position:"relative",overflow:"hidden"}}>{image?<Image src={image.url} alt={image.alt||name} fill preload sizes="(max-width: 800px) 100vw, 50vw" style={{objectFit:"contain"}}/>:<span className="product-object">B&amp;B</span>}</div>{images.length>1&&<div className="gallery-thumbnails">{images.map((image,i)=><button key={image.url} onClick={()=>setSelected(i)} aria-label={`View image ${i+1}: ${image.alt}`} aria-pressed={selected===i}><Image src={image.url} alt="" width={70} height={90} style={{objectFit:"contain"}}/></button>)}</div>}</section>}

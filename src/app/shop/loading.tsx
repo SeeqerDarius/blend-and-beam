@@ -1,0 +1,1 @@
+export default function Loading(){return <main className="wrap section" role="status" aria-label="Loading products"><div className="product-grid">{[1,2,3,4,5,6,7,8].map(i=><div className="skeleton" key={i} style={{aspectRatio:"3/4"}}/>)}</div></main>}

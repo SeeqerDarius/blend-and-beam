@@ -1,1 +1,3 @@
-import{InfoPage}from"@/components/info-page";export default function Contact(){return <InfoPage eyebrow="WE'RE HERE TO HELP" title="Talk to Blend & Beam"><p>Business contact details are being finalized. The support email, phone, WhatsApp, physical location, and business hours will appear here once approved by the owner.</p><form className="stack-form"><label>Name<input required/></label><label>Email<input type="email" required/></label><label>Message<textarea rows={5} required/></label><button type="button" className="button button-dark" disabled>Contact form requires mail configuration</button></form></InfoPage>}
+import {InfoPage} from '@/components/info-page';
+import {BusinessContact} from '@/components/business-contact';
+export default function Contact(){return <InfoPage eyebrow="WE'RE HERE TO HELP" title="Talk to Blend & Beam"><p>For product advice, availability, delivery enquiries or help with your order, contact our team.</p><BusinessContact/></InfoPage>}

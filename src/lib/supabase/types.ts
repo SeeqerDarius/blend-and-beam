@@ -1,5 +1,3 @@
-// Generated from the Blend & Beam Commerce Supabase project. Regenerate with the
-// Supabase CLI or MCP `generate_typescript_types` after any migration change.
 export type Json =
   | string
   | number
@@ -9,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -278,6 +278,7 @@ export type Database = {
           low_stock_threshold: number
           product_id: string | null
           quantity: number
+          updated_at: string
           variant_id: string | null
         }
         Insert: {
@@ -285,6 +286,7 @@ export type Database = {
           low_stock_threshold?: number
           product_id?: string | null
           quantity?: number
+          updated_at?: string
           variant_id?: string | null
         }
         Update: {
@@ -292,6 +294,7 @@ export type Database = {
           low_stock_threshold?: number
           product_id?: string | null
           quantity?: number
+          updated_at?: string
           variant_id?: string | null
         }
         Relationships: [
@@ -458,6 +461,7 @@ export type Database = {
         Row: {
           admin_note: string | null
           billing_address: Json | null
+          checkout_fingerprint: string | null
           created_at: string
           currency: string
           customer_note: string | null
@@ -467,6 +471,7 @@ export type Database = {
           id: string
           idempotency_key: string
           order_number: string
+          payment_method: string
           payment_status: Database["public"]["Enums"]["payment_status"]
           shipping_address: Json
           shipping_minor: number
@@ -480,6 +485,7 @@ export type Database = {
         Insert: {
           admin_note?: string | null
           billing_address?: Json | null
+          checkout_fingerprint?: string | null
           created_at?: string
           currency?: string
           customer_note?: string | null
@@ -489,6 +495,7 @@ export type Database = {
           id?: string
           idempotency_key: string
           order_number: string
+          payment_method?: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           shipping_address: Json
           shipping_minor: number
@@ -502,6 +509,7 @@ export type Database = {
         Update: {
           admin_note?: string | null
           billing_address?: Json | null
+          checkout_fingerprint?: string | null
           created_at?: string
           currency?: string
           customer_note?: string | null
@@ -511,6 +519,7 @@ export type Database = {
           id?: string
           idempotency_key?: string
           order_number?: string
+          payment_method?: string
           payment_status?: Database["public"]["Enums"]["payment_status"]
           shipping_address?: Json
           shipping_minor?: number
@@ -648,27 +657,39 @@ export type Database = {
       product_images: {
         Row: {
           alt_text: string
+          height: number | null
           id: string
+          original_path: string | null
           path: string
+          preparation: Json | null
           product_id: string
           sort_order: number
           variant_id: string | null
+          width: number | null
         }
         Insert: {
           alt_text: string
+          height?: number | null
           id?: string
+          original_path?: string | null
           path: string
+          preparation?: Json | null
           product_id: string
           sort_order?: number
           variant_id?: string | null
+          width?: number | null
         }
         Update: {
           alt_text?: string
+          height?: number | null
           id?: string
+          original_path?: string | null
           path?: string
+          preparation?: Json | null
           product_id?: string
           sort_order?: number
           variant_id?: string | null
+          width?: number | null
         }
         Relationships: [
           {
@@ -683,6 +704,41 @@ export type Database = {
             columns: ["variant_id"]
             isOneToOne: false
             referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_upload_batches: {
+        Row: {
+          actor_id: string
+          created_at: string
+          expired: boolean
+          id: string
+          paths: string[]
+          product_id: string | null
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          expired?: boolean
+          id: string
+          paths?: string[]
+          product_id?: string | null
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          expired?: boolean
+          id?: string
+          paths?: string[]
+          product_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_upload_batches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -932,6 +988,7 @@ export type Database = {
       }
       shipping_zones: {
         Row: {
+          cod_enabled: boolean
           estimate: string
           fee_minor: number
           free_shipping_threshold_minor: number | null
@@ -941,6 +998,7 @@ export type Database = {
           regions: string[]
         }
         Insert: {
+          cod_enabled?: boolean
           estimate: string
           fee_minor: number
           free_shipping_threshold_minor?: number | null
@@ -950,6 +1008,7 @@ export type Database = {
           regions: string[]
         }
         Update: {
+          cod_enabled?: boolean
           estimate?: string
           fee_minor?: number
           free_shipping_threshold_minor?: number | null
@@ -1020,22 +1079,103 @@ export type Database = {
           p_delta: number
           p_product: string
           p_reason: string
-          p_variant?: string | null
+          p_variant?: string
         }
         Returns: undefined
       }
       admin_order: { Args: { p_order: string }; Returns: Json }
       admin_product: {
         Args: { p_id: string }
-        Returns: Database["public"]["Tables"]["products"]["Row"]
+        Returns: {
+          allow_backorder: boolean
+          brand_id: string | null
+          compare_at_minor: number | null
+          cost_minor: number | null
+          created_at: string
+          currency: string
+          description: string | null
+          id: string
+          is_best_seller: boolean
+          is_featured: boolean
+          name: string
+          price_minor: number
+          published_at: string | null
+          seo_description: string | null
+          seo_title: string | null
+          short_description: string | null
+          sku: string
+          slug: string
+          status: Database["public"]["Enums"]["product_status"]
+          track_inventory: boolean
+          updated_at: string
+          warranty: string | null
+          weight_grams: number | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "products"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       admin_products: {
         Args: never
-        Returns: Database["public"]["Tables"]["products"]["Row"][]
+        Returns: {
+          allow_backorder: boolean
+          brand_id: string | null
+          compare_at_minor: number | null
+          cost_minor: number | null
+          created_at: string
+          currency: string
+          description: string | null
+          id: string
+          is_best_seller: boolean
+          is_featured: boolean
+          name: string
+          price_minor: number
+          published_at: string | null
+          seo_description: string | null
+          seo_title: string | null
+          short_description: string | null
+          sku: string
+          slug: string
+          status: Database["public"]["Enums"]["product_status"]
+          track_inventory: boolean
+          updated_at: string
+          warranty: string | null
+          weight_grams: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "products"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       assign_staff: {
         Args: { p_email: string; p_remove?: boolean; p_role: string }
         Returns: undefined
+      }
+      collect_cod_payment: {
+        Args: { p_note: string; p_order: string }
+        Returns: undefined
+      }
+      commerce_report: { Args: { p_from: string; p_to: string }; Returns: Json }
+      create_product_with_images: {
+        Args: {
+          p_category?: string
+          p_images: Json
+          p_key: string
+          p_product: Json
+        }
+        Returns: string
+      }
+      expire_product_uploads: {
+        Args: never
+        Returns: {
+          id: string
+          paths: string[]
+        }[]
       }
       has_permission: { Args: { permission_key: string }; Returns: boolean }
       has_staff_permission: {
@@ -1043,10 +1183,23 @@ export type Database = {
         Returns: boolean
       }
       my_permissions: { Args: never; Returns: string[] }
+      place_cod_order: {
+        Args: { p_address: Json; p_items: Json; p_key: string; p_zone: string }
+        Returns: Json
+      }
+      record_contact_selection: {
+        Args: { p_channel: string; p_slug: string }
+        Returns: undefined
+      }
+      register_product_upload: {
+        Args: { p_key: string; p_paths: string[] }
+        Returns: string
+      }
       set_order_note: {
         Args: { p_note: string; p_order: string }
         Returns: undefined
       }
+      set_primary_image: { Args: { p_image: string }; Returns: undefined }
       staff_membership: { Args: never; Returns: boolean }
       transition_order: {
         Args: { p_note: string; p_order: string; p_status: string }
@@ -1079,3 +1232,148 @@ export type Database = {
     }
   }
 }
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never) = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never) = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      order_status: [
+        "pending",
+        "confirmed",
+        "processing",
+        "ready_for_dispatch",
+        "shipped",
+        "out_for_delivery",
+        "delivered",
+        "cancelled",
+        "returned",
+      ],
+      payment_status: [
+        "pending",
+        "processing",
+        "paid",
+        "failed",
+        "cancelled",
+        "refunded",
+        "partially_refunded",
+      ],
+      product_status: ["draft", "active", "archived"],
+    },
+  },
+} as const

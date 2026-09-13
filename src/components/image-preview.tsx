@@ -1,0 +1,8 @@
+/* eslint-disable @next/next/no-img-element -- Canvas data URLs are local image previews. */
+"use client";
+import {useEffect,useState} from "react";
+type Props={url:string;rotation:number;mode:"fit"|"fill";crop:{x:number;y:number;width:number;height:number}|null;aspect:number;alt:string};
+// Canvas is only a local preview. The server independently decodes, validates,
+// rotates and crops the original; it never trusts browser-produced bytes.
+export function ImagePreview({url,rotation,mode,crop,aspect,alt}:Props){const [preview,setPreview]=useState("");useEffect(()=>{let active=true;const img=new window.Image();img.onload=()=>{const rotated=document.createElement("canvas");const sideways=rotation%180!==0;rotated.width=sideways?img.naturalHeight:img.naturalWidth;rotated.height=sideways?img.naturalWidth:img.naturalHeight;const ctx=rotated.getContext("2d")!;ctx.translate(rotated.width/2,rotated.height/2);ctx.rotate(rotation*Math.PI/180);ctx.drawImage(img,-img.naturalWidth/2,-img.naturalHeight/2);const out=document.createElement("canvas");out.width=300;out.height=Math.round(300/aspect);const dest=out.getContext("2d")!;dest.fillStyle="#f6f2ea";dest.fillRect(0,0,out.width,out.height);const region=mode==="fill"&&crop?crop:{x:0,y:0,width:rotated.width,height:rotated.height};const scale=Math.min(out.width/region.width,out.height/region.height);dest.drawImage(rotated,region.x,region.y,region.width,region.height,(out.width-region.width*scale)/2,(out.height-region.height*scale)/2,region.width*scale,region.height*scale);if(active)setPreview(out.toDataURL("image/webp"))};img.crossOrigin="anonymous";img.src=url;return()=>{active=false}},[url,rotation,mode,crop,aspect]);return <img src={preview||url} alt={alt} style={{objectFit:"contain"}}/>}
+
