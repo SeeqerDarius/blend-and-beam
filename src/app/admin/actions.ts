@@ -2,6 +2,7 @@
 import {redirect} from "next/navigation";import {revalidatePath,updateTag} from "next/cache";import {z} from "zod";import {requireStaff} from "@/lib/admin-auth";import {resources} from "@/lib/admin-resources";
 import {prepareImage} from "@/lib/image-preparation";
 import {createClient as createAdminClient} from "@supabase/supabase-js";
+import {sendEmail} from "@/lib/resend";
 const uuid=z.string().uuid();
 function done(section:string,error?:string):never{if(!error){revalidatePath("/admin","layout");revalidatePath("/","layout");updateTag("catalog");}redirect("/admin/"+section+(error?"?error="+encodeURIComponent(error):"?saved=1"));}
 export async function saveResource(form:FormData){
@@ -33,8 +34,11 @@ export async function transitionOrder(form:FormData){const {db}=await requireSta
 export async function moderateReview(form:FormData){const {db}=await requireStaff("reviews.manage");const parsed=z.object({id:uuid,status:z.enum(["approved","rejected","pending"])}).safeParse({id:form.get("id"),status:form.get("status")});if(!parsed.success)done("reviews","Invalid review.");const {error}=await db.from("reviews").update({status:parsed.data.status}).eq("id",parsed.data.id).select("id").single();done("reviews",error?"Unable to moderate review.":undefined);}
 // Grant is a two-step, honest flow rather than a silent "invite email":
 // try the direct role grant first (works instantly for anyone who already
-// has a confirmed account); only send a real Supabase invite email when no
-// such account exists, and say plainly whether that email actually sent.
+// has a confirmed account); only invite when no such account exists, and
+// say plainly whether that invite actually sent. Supabase's admin API
+// creates the pending account and mints the one-time link (generateLink,
+// not inviteUserByEmail) - Resend is what actually delivers it, since
+// Supabase's own mailer is not meant for production sending volume.
 export async function inviteStaff(form:FormData){
  const {db}=await requireStaff("staff.manage");
  const parsed=z.object({email:z.string().trim().toLowerCase().email().max(254),role:uuid,operation:z.enum(["grant","remove"])}).safeParse({email:form.get("email"),role:form.get("role"),operation:form.get("operation")});
@@ -52,12 +56,25 @@ export async function inviteStaff(form:FormData){
  }
  const serviceKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!serviceKey){
-  redirect("/admin/staff?error="+encodeURIComponent(`${email} doesn't have an account yet, and email invites aren't configured on this deployment (missing SUPABASE_SERVICE_ROLE_KEY). Ask them to sign up at /login, then grant their role here once confirmed.`));
+  redirect("/admin/staff?error="+encodeURIComponent(`${email} doesn't have an account yet, and invites aren't configured on this deployment (missing SUPABASE_SERVICE_ROLE_KEY). Ask them to sign up at /login, then grant their role here once confirmed.`));
+ }
+ if(!process.env.RESEND_API_KEY){
+  redirect("/admin/staff?error="+encodeURIComponent(`${email} doesn't have an account yet, and invite emails aren't configured on this deployment (missing RESEND_API_KEY). Ask them to sign up at /login, then grant their role here once confirmed.`));
  }
  const admin=createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,serviceKey);
- const {error:inviteError}=await admin.auth.admin.inviteUserByEmail(email,{redirectTo:`${process.env.NEXT_PUBLIC_APP_URL}/login`});
- if(inviteError){
-  redirect("/admin/staff?error="+encodeURIComponent(`Invite email to ${email} failed: ${inviteError.message}`));
+ const {data:link,error:linkError}=await admin.auth.admin.generateLink({type:"invite",email,options:{redirectTo:`${process.env.NEXT_PUBLIC_APP_URL}/login`}});
+ if(linkError||!link?.properties?.action_link){
+  redirect("/admin/staff?error="+encodeURIComponent(`Invite could not be created for ${email}: ${linkError?.message||"unknown error"}`));
+ }
+ const sent=await sendEmail({
+  to:email,
+  subject:"You're invited to the Blend & Beam team",
+  html:`<p>You've been invited to join the Blend & Beam admin team.</p><p><a href="${link.properties.action_link}">Accept the invite and set your password</a></p><p>If you weren't expecting this, you can ignore this email.</p>`,
+ });
+ if(!sent.ok){
+  // The account already exists at this point - don't strand the admin
+  // without a way forward just because delivery failed.
+  redirect("/admin/staff?error="+encodeURIComponent(`Account created for ${email}, but the invite email failed to send (${sent.error}). Share this link with them directly: ${link.properties.action_link}`));
  }
  redirect("/admin/staff?staffResult=invited&email="+encodeURIComponent(email));
 }
