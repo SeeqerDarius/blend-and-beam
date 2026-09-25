@@ -88,7 +88,7 @@ export default async function Workspace({params,searchParams}:{params:Promise<{s
  {section==="payments"&&<p>Online payments are provider-verified. Authorized staff can record payment for delivered COD orders from Orders. Refunds must be processed through Paystack; this screen does not issue refunds.</p>}
  {section==="staff"&&<><p>If the person already has a confirmed account, access is granted immediately. Otherwise a real invite email is sent — you&apos;ll see exactly whether it went out. New staff must set up two-factor authentication before access works. You cannot change your own roles.</p>
  {q.staffResult==="granted"&&<p role="status" className="operations-notice">✓ Access granted immediately — {q.email} already had a confirmed account.</p>}
- {q.staffResult==="invited"&&<p role="status" className="operations-notice">✓ Invite email sent to {q.email}. Once they open it and confirm, come back here and grant their role again.</p>}
+ {q.staffResult==="invited"&&<p role="status" className="operations-notice">✓ Invite email sent to {q.email}. After they accept the invite and set a password, come back here and grant their role.</p>}
  {q.staffResult==="revoked"&&<p role="status" className="operations-notice">✓ Access revoked for {q.email}.</p>}
  <form action={inviteStaff} className="operations-form operations-card"><label>Email<input name="email" type="email" required/></label><Select name="role" label="Role" rows={(await db.from("roles").select("id,name").order("name")).data??[]}/><label>Action<select name="operation"><option value="grant">Grant access (invite if needed)</option><option value="remove">Remove role</option></select></label><SubmitButton>Update staff access</SubmitButton></form></>}
 

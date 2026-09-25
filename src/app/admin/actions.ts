@@ -62,7 +62,8 @@ export async function inviteStaff(form:FormData){
   redirect("/admin/staff?error="+encodeURIComponent(`${email} doesn't have an account yet, and invite emails aren't configured on this deployment (missing RESEND_API_KEY). Ask them to sign up at /login, then grant their role here once confirmed.`));
  }
  const admin=createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,serviceKey);
- const {data:link,error:linkError}=await admin.auth.admin.generateLink({type:"invite",email,options:{redirectTo:`${process.env.NEXT_PUBLIC_APP_URL}/login`}});
+ const inviteReturn=new URL("/auth/callback",process.env.NEXT_PUBLIC_APP_URL!);inviteReturn.searchParams.set("next","/account/setup-password");
+ const {data:link,error:linkError}=await admin.auth.admin.generateLink({type:"invite",email,options:{redirectTo:inviteReturn.toString()}});
  if(linkError||!link?.properties?.action_link){
   redirect("/admin/staff?error="+encodeURIComponent(`Invite could not be created for ${email}: ${linkError?.message||"unknown error"}`));
  }
