@@ -17,6 +17,7 @@ type Photo = {
   file: File;
   url: string;
   alt: string;
+  altEdited: boolean;
   rotation: number;
   mode: "fit" | "fill";
   aspect: number;
@@ -24,6 +25,11 @@ type Photo = {
   pan: { x: number; y: number };
   zoom: number;
 };
+function defaultImageAlt(productName: string, index: number) {
+  const name = productName.trim().replace(/\s+/g, " ") || "Product";
+  const position = index === 0 ? " — primary image" : ` — image ${index + 1}`;
+  return `${name.slice(0, 200 - position.length)}${position}`;
+}
 export function ProductCreateForm({
   categories,
 }: {
@@ -83,7 +89,7 @@ export function ProductCreateForm({
         const upload = new FormData();
         upload.set("key", key.current);
         upload.set("imageKey", p.id);
-        upload.set("alt", p.alt);
+        upload.set("alt", p.altEdited ? p.alt : defaultImageAlt(name, i));
         upload.set("file", p.file);
         upload.set(
           "options",
@@ -309,14 +315,15 @@ export function ProductCreateForm({
                 setResult({ error: "Choose up to six images." });
                 return;
               }
-              const next = files.map((file) => {
+              const next = files.map((file, i) => {
                 const url = URL.createObjectURL(file);
                 urls.current.push(url);
                 return {
                   id: crypto.randomUUID(),
                   file,
                   url,
-                  alt: name,
+                  alt: defaultImageAlt(name, photos.length + i),
+                  altEdited: false,
                   rotation: 0,
                   mode: "fit" as const,
                   aspect: 0.75,
@@ -342,7 +349,7 @@ export function ProductCreateForm({
                 {/* Local object URL, not an external image. */}
                 <img
                   src={p.url}
-                  alt={p.alt || p.file.name}
+                  alt={p.altEdited ? p.alt : defaultImageAlt(name, i)}
                   width={100}
                   height={120}
                 />
@@ -352,8 +359,10 @@ export function ProductCreateForm({
               <label>
                 Alt text
                 <input
-                  value={p.alt}
-                  onChange={(e) => changePhoto(p.id, { alt: e.target.value })}
+                  value={p.altEdited ? p.alt : defaultImageAlt(name, i)}
+                  onChange={(e) =>
+                    changePhoto(p.id, { alt: e.target.value, altEdited: true })
+                  }
                   required
                   minLength={3}
                   maxLength={200}
@@ -412,7 +421,11 @@ export function ProductCreateForm({
               ) : (
                 <img
                   src={photo.url}
-                  alt={photo.alt}
+                  alt={
+                    photo.altEdited
+                      ? photo.alt
+                      : defaultImageAlt(name, photos.indexOf(photo))
+                  }
                   style={{
                     width: "100%",
                     height: "100%",
@@ -502,7 +515,11 @@ export function ProductCreateForm({
               <figure>
                 <ImagePreview
                   url={photo.url}
-                  alt={photo.alt}
+                  alt={
+                    photo.altEdited
+                      ? photo.alt
+                      : defaultImageAlt(name, photos.indexOf(photo))
+                  }
                   rotation={photo.rotation}
                   mode={photo.mode}
                   crop={photo.crop}
@@ -513,7 +530,11 @@ export function ProductCreateForm({
               <figure>
                 <ImagePreview
                   url={photo.url}
-                  alt={photo.alt}
+                  alt={
+                    photo.altEdited
+                      ? photo.alt
+                      : defaultImageAlt(name, photos.indexOf(photo))
+                  }
                   rotation={photo.rotation}
                   mode={photo.mode}
                   crop={photo.crop}
