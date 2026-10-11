@@ -17,8 +17,14 @@ export async function removeImageBackground(
     );
   }
 
+  // Send an upright image so the cutout lines up with the auto-oriented original.
+  const { orientation } = await sharp(bytes, { limitInputPixels: 25_000_000 }).metadata();
+  const upright = orientation && orientation > 1
+    ? { bytes: await sharp(bytes, { limitInputPixels: 25_000_000 }).autoOrient().jpeg({ quality: 95 }).toBuffer(), mime: "image/jpeg" }
+    : { bytes, mime };
+
   const form = new FormData();
-  form.set("image_file", new Blob([new Uint8Array(bytes)], { type: mime }), "product-image");
+  form.set("image_file", new Blob([new Uint8Array(upright.bytes)], { type: upright.mime }), "product-image");
   form.set("size", "auto");
 
   let response: Response;
