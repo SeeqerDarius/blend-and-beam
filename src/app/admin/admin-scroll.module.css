@@ -8,6 +8,102 @@
   overscroll-behavior-y: contain;
 }
 
+.shell :global(.operations-main) {
+  padding: 24px 32px;
+}
+
+.shell :global(.operations-main) h1 {
+  margin: 16px 0 20px;
+  font-size: clamp(30px, 3vw, 38px);
+  line-height: 1.12;
+}
+
+.shell :global(.operations-main) h2,
+.shell :global(.operations-card) h2 {
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.shell :global(.operations-main) p {
+  line-height: 1.55;
+}
+
+.shell :global(.operations-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.shell :global(.operations-card) {
+  padding: 18px;
+  margin: 14px 0;
+}
+
+.shell :global(.operations-form) {
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.shell :global(.operations-form) label {
+  font-size: 12px;
+}
+
+.shell :global(.operations-form) input:not([type="checkbox"]),
+.shell :global(.operations-form) select,
+.shell :global(.operations-form) textarea,
+.shell :global(.report-filter) input,
+.shell :global(.report-filter) select {
+  padding: 9px 10px;
+  font-size: 14px;
+}
+
+.shell :global(.operations-form) textarea {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.shell :global(.operations-form) button {
+  padding: 9px 14px;
+}
+
+.shell :global(.operations-notice) {
+  padding: 14px 16px;
+  margin: 18px 0;
+}
+
+.shell :global(.table-scroll) {
+  margin: 18px 0;
+}
+
+.shell :global(.table-scroll th),
+.shell :global(.table-scroll td) {
+  padding: 10px 12px;
+}
+
+.shell :global(.photo-list) {
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.shell :global(.photo-tile) {
+  padding: 12px;
+}
+
+.shell :global(.report-kpis) {
+  gap: 14px;
+}
+
+.shell :global(.report-kpis h2) {
+  margin-bottom: 12px;
+}
+
+.shell :global(.report-filter) {
+  gap: 12px;
+  margin-block: 18px;
+}
+
 @media (max-width: 800px) {
   .sidebar {
     position: static;
@@ -15,5 +111,23 @@
     max-height: none;
     overflow: visible;
     overscroll-behavior-y: auto;
+  }
+
+  .shell :global(.operations-main) {
+    padding: 20px 16px;
+  }
+
+  .shell :global(.operations-main) h1 {
+    font-size: clamp(28px, 7vw, 34px);
+    margin: 14px 0 18px;
+  }
+
+  .shell :global(.operations-card) {
+    padding: 16px;
+    margin: 12px 0;
+  }
+
+  .shell :global(.report-kpis) {
+    gap: 10px;
   }
 }
