@@ -1,6 +1,7 @@
 "use server";
 import { requireStaff } from "@/lib/admin-auth";
 import { prepareImage, cropSchema } from "@/lib/image-preparation";
+import { removeImageBackground } from "@/lib/hosted-background-removal";
 import { toMinor } from "@/lib/product-draft";
 import { z } from "zod";
 import { revalidatePath, updateTag } from "next/cache";
@@ -70,10 +71,15 @@ export async function stageProductImage(
   if (registered.data) return { id: registered.data };
   try {
     const options = cropSchema.parse(JSON.parse(String(form.get("options"))));
+    const inputBytes = Buffer.from(await file.arrayBuffer());
+    const cutout = options.backgroundRemoval === "remove-bg"
+      ? await removeImageBackground(inputBytes, file.type)
+      : undefined;
     const prepared = await prepareImage(
-      Buffer.from(await file.arrayBuffer()),
+      inputBytes,
       file.type,
       options,
+      cutout,
     );
     for (const [path, bytes] of [
       [paths[0], prepared.prepared],

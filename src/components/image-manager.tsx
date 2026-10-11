@@ -7,15 +7,18 @@ export function ImageManager({
   id,
   url,
   alt,
+  backgroundRemovalAvailable,
 }: {
   id: string;
   url: string;
   alt: string;
+  backgroundRemovalAvailable: boolean;
 }) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [mode, setMode] = useState<"fit" | "fill">("fit");
+  const [backgroundRemoval, setBackgroundRemoval] = useState<"remove-bg" | "keep">("keep");
   const [aspect, setAspect] = useState(0.75);
   const [crop, setCrop] = useState<{
     x: number;
@@ -39,7 +42,7 @@ export function ImageManager({
             form.set("image", id);
             form.set(
               "options",
-              JSON.stringify({ rotation, mode, aspect, crop }),
+              JSON.stringify({ rotation, mode, aspect, crop, backgroundRemoval }),
             );
             const result = await recropImage(form);
             setMessage(result.error ?? "Image updated successfully.");
@@ -73,6 +76,18 @@ export function ImageManager({
                 maxLength={200}
                 required
               />
+            </label>
+            <label>
+              Background
+              <select
+                value={backgroundRemoval}
+                onChange={(e) => setBackgroundRemoval(e.target.value as "remove-bg" | "keep")}
+              >
+                <option value="keep">Keep original background</option>
+                <option value="remove-bg" disabled={!backgroundRemovalAvailable}>
+                  Remove background with remove.bg
+                </option>
+              </select>
             </label>
             <label>
               Presentation
@@ -140,6 +155,11 @@ export function ImageManager({
               <figcaption>Prepared product image</figcaption>
             </figure>
           </div>
+          {backgroundRemoval === "remove-bg" ? (
+            <p role="status">Background removal runs when you save. remove.bg processes the image, and your original is retained so you can retry.</p>
+          ) : !backgroundRemovalAvailable ? (
+            <p role="status">Add REMOVE_BG_API_KEY to the Vercel production environment to enable automatic background removal.</p>
+          ) : null}
           <button className="button button-dark" disabled={busy}>
             {busy ? "Preparing image…" : "Save prepared image"}
           </button>

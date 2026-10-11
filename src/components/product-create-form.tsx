@@ -24,6 +24,7 @@ type Photo = {
   crop: Crop | null;
   pan: { x: number; y: number };
   zoom: number;
+  backgroundRemoval: "remove-bg" | "keep";
 };
 function defaultImageAlt(productName: string, index: number) {
   const name = productName.trim().replace(/\s+/g, " ") || "Product";
@@ -32,8 +33,10 @@ function defaultImageAlt(productName: string, index: number) {
 }
 export function ProductCreateForm({
   categories,
+  backgroundRemovalAvailable,
 }: {
   categories: Array<{ id: string; name: string }>;
+  backgroundRemovalAvailable: boolean;
 }) {
   const router = useRouter();
   const [progress, setProgress] = useState("");
@@ -98,6 +101,7 @@ export function ProductCreateForm({
             mode: p.mode,
             aspect: p.aspect,
             crop: p.crop,
+            backgroundRemoval: p.backgroundRemoval,
           }),
         );
         const result = await stageProductImage(upload);
@@ -303,6 +307,15 @@ export function ProductCreateForm({
           primary image. Originals are retained without metadata for future
           preparation.
         </p>
+        {backgroundRemovalAvailable ? (
+          <p className="image-removal-status" role="status">
+            New images are cut out automatically with remove.bg. Images sent for removal are processed by that provider. You can keep the original background per image.
+          </p>
+        ) : (
+          <p className="image-removal-status" role="status">
+            Automatic background removal is not configured yet. Images will keep their original background until REMOVE_BG_API_KEY is added to Vercel.
+          </p>
+        )}
         <label>
           Add images
           <input
@@ -330,6 +343,7 @@ export function ProductCreateForm({
                   crop: null,
                   pan: { x: 0, y: 0 },
                   zoom: 1,
+                  backgroundRemoval: backgroundRemovalAvailable ? "remove-bg" as const : "keep" as const,
                 };
               });
               setPhotos([...photos, ...next]);
@@ -436,6 +450,22 @@ export function ProductCreateForm({
               )}
             </div>
             <div className="operations-form">
+              <label>
+                Background
+                <select
+                  value={photo.backgroundRemoval}
+                  onChange={(e) =>
+                    changePhoto(photo.id, {
+                      backgroundRemoval: e.target.value as Photo["backgroundRemoval"],
+                    })
+                  }
+                >
+                  <option value="remove-bg" disabled={!backgroundRemovalAvailable}>
+                    Remove background automatically
+                  </option>
+                  <option value="keep">Keep original background</option>
+                </select>
+              </label>
               <label>
                 Presentation
                 <select

@@ -1,6 +1,7 @@
 "use server";
 import { requireStaff } from "@/lib/admin-auth";
 import { prepareImage } from "@/lib/image-preparation";
+import { removeImageBackground } from "@/lib/hosted-background-removal";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 export async function recropImage(form: FormData): Promise<{ error?: string }> {
@@ -22,11 +23,11 @@ export async function recropImage(form: FormData): Promise<{ error?: string }> {
   try {
     const bytes = Buffer.from(await source.data.arrayBuffer());
     const mime = source.data.type.split(";")[0];
-    const prepared = await prepareImage(
-      bytes,
-      mime,
-      JSON.parse(String(form.get("options"))),
-    );
+    const options = JSON.parse(String(form.get("options")));
+    const cutout = options?.backgroundRemoval === "remove-bg"
+      ? await removeImageBackground(bytes, mime)
+      : undefined;
+    const prepared = await prepareImage(bytes, mime, options, cutout);
     const path = `${image.product_id}/${crypto.randomUUID()}.webp`;
     const uploaded = await db.storage
       .from("products")

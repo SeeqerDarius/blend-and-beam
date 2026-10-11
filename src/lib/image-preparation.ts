@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import {z} from "zod";
-export const cropSchema=z.object({rotation:z.number().int().min(0).max(270).multipleOf(90),mode:z.enum(["fit","fill"]),aspect:z.number().min(.5).max(2),crop:z.object({x:z.number().int().min(0),y:z.number().int().min(0),width:z.number().int().min(1),height:z.number().int().min(1)}).nullable()});
-export async function prepareImage(bytes:Buffer,mime:string,options:unknown){
+export const cropSchema=z.object({rotation:z.number().int().min(0).max(270).multipleOf(90),mode:z.enum(["fit","fill"]),aspect:z.number().min(.5).max(2),crop:z.object({x:z.number().int().min(0),y:z.number().int().min(0),width:z.number().int().min(1),height:z.number().int().min(1)}).nullable(),backgroundRemoval:z.enum(["remove-bg","keep"]).default("keep")});
+export async function prepareImage(bytes:Buffer,mime:string,options:unknown,cutout?:Buffer){
  if(!bytes.length||bytes.length>4*1024*1024)throw new Error("Choose an image under 4 MB.");
  const format=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?"jpeg":bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?"png":bytes.toString("ascii",0,4)==="RIFF"&&bytes.toString("ascii",8,12)==="WEBP"?"webp":null;
  if(!format||mime!==`image/${format}`)throw new Error("File signature and MIME type must match JPEG, PNG or WebP.");
@@ -12,7 +12,8 @@ export async function prepareImage(bytes:Buffer,mime:string,options:unknown){
  const rotated=await sharp(original).rotate(config.rotation).toBuffer();
  let pipeline=sharp(rotated);
  if(config.mode==="fill"&&config.crop){const m=await pipeline.metadata();if(config.crop.x+config.crop.width>m.width!||config.crop.y+config.crop.height>m.height!)throw new Error("Crop exceeds image bounds.");pipeline=pipeline.extract({left:config.crop.x,top:config.crop.y,width:config.crop.width,height:config.crop.height})}
- const prepared=await pipeline.resize({width:1200,height:Math.round(1200/config.aspect),fit:"contain",background:"#f6f2ea",withoutEnlargement:true}).webp({quality:84}).toBuffer();
+ if(cutout){pipeline=sharp(await pipeline.png().toBuffer()).trim({background:{r:0,g:0,b:0,alpha:0},threshold:8})}
+ const prepared=await pipeline.resize({width:1200,height:Math.round(1200/config.aspect),fit:"contain",background:cutout?{r:0,g:0,b:0,alpha:0}:"#f6f2ea",withoutEnlargement:true}).webp({quality:84}).toBuffer();
  const size=await sharp(prepared).metadata();return {original,prepared,width:size.width!,height:size.height!};
 }
 

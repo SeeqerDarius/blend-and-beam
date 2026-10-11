@@ -1,6 +1,7 @@
 "use server";
 import {redirect} from "next/navigation";import {revalidatePath,updateTag} from "next/cache";import {z} from "zod";import {requireStaff} from "@/lib/admin-auth";import {resources} from "@/lib/admin-resources";
 import {prepareImage} from "@/lib/image-preparation";
+import {removeImageBackground} from "@/lib/hosted-background-removal";
 import {createClient as createAdminClient} from "@supabase/supabase-js";
 import {sendEmail} from "@/lib/resend";
 const uuid=z.string().uuid();
@@ -82,11 +83,13 @@ export async function inviteStaff(form:FormData){
 export async function linkCategory(form:FormData){const {db}=await requireStaff("products.manage");const parsed=z.object({product_id:uuid,category_id:uuid}).safeParse({product_id:form.get("product"),category_id:form.get("category")});if(!parsed.success)done("products","Select a product and category.");const result=form.get("operation")==="remove"?await db.from("product_categories").delete().match(parsed.data):await db.from("product_categories").upsert(parsed.data);done("products",result.error?"Unable to update category.":undefined);}
 export async function uploadProductImage(form:FormData){
  const {db}=await requireStaff("products.manage");const product=uuid.safeParse(form.get("product"));const alt=z.string().trim().min(3).max(200).safeParse(form.get("alt"));const file=form.get("image");if(!product.success||!alt.success||!(file instanceof File)||file.size===0||file.size>4*1024*1024)done("products","Choose a product, descriptive alt text and a PNG/JPEG/WebP image under 4 MB.");
- let prepared;try{prepared=await prepareImage(Buffer.from(await file.arrayBuffer()),file.type,{rotation:0,mode:"fit",aspect:.75,crop:null})}catch(error){done("products",error instanceof Error?error.message:"Invalid image.")}
- const bytes=prepared.prepared;const path=product.data+"/"+crypto.randomUUID()+".webp"; const {error}=await db.storage.from("products").upload(path,bytes,{contentType:"image/webp",upsert:false});
- if(error)done("products","Image upload failed.");
- const result=await db.from("product_images").insert({product_id:product.data,path,alt_text:alt.data});
- if(result.error){await db.storage.from("products").remove([path]);done("products","Image metadata could not be saved.");}done("products");
+ let prepared;try{const bytes=Buffer.from(await file.arrayBuffer());const cutout=form.get("backgroundRemoval")==="remove-bg"?await removeImageBackground(bytes,file.type):undefined;prepared=await prepareImage(bytes,file.type,{rotation:0,mode:"fit",aspect:.75,crop:null,backgroundRemoval:form.get("backgroundRemoval")==="remove-bg"?"remove-bg":"keep"},cutout)}catch(error){done("products",error instanceof Error?error.message:"Invalid image.")}
+ const stem=product.data+"/"+crypto.randomUUID();const path=stem+".webp";const originalPath=stem+"-original.webp";const storage=db.storage.from("products");const uploaded=await storage.upload(path,prepared.prepared,{contentType:"image/webp",upsert:false});
+ if(uploaded.error)done("products","Image upload failed.");
+ const originalUpload=await storage.upload(originalPath,prepared.original,{contentType:"image/webp",upsert:false});
+ if(originalUpload.error){await storage.remove([path]);done("products","Original image could not be retained.");}
+ const result=await db.from("product_images").insert({product_id:product.data,path,original_path:originalPath,alt_text:alt.data});
+ if(result.error){await storage.remove([path,originalPath]);done("products","Image metadata could not be saved.");}done("products");
 }
 
 export async function collectPayment(form:FormData){const {db}=await requireStaff("payments.collect");const parsed=z.object({p_order:uuid,p_note:z.string().trim().min(5).max(500)}).safeParse({p_order:form.get("order"),p_note:form.get("note")});if(!parsed.success)done("orders","Enter a receipt note.");const {error}=await db.rpc("collect_cod_payment",parsed.data);done("orders",error?"Payment receipt rejected. Check permission and that this COD order is delivered.":undefined);}
