@@ -74,9 +74,10 @@ export async function inviteStaff(form:FormData){
   html:`<p>You've been invited to join the Blend & Beam admin team.</p><p><a href="${link.properties.action_link}">Accept the invite and set your password</a></p><p>If you weren't expecting this, you can ignore this email.</p>`,
  });
  if(!sent.ok){
-  // The account already exists at this point - don't strand the admin
-  // without a way forward just because delivery failed.
-  redirect("/admin/staff?error="+encodeURIComponent(`Account created for ${email}, but the invite email failed to send (${sent.error}). Share this link with them directly: ${link.properties.action_link}`));
+  // Never put an authentication token in a redirect URL: URLs are retained in
+  // browser history, analytics, and server logs. The pending account can be
+  // retried after the email provider configuration is corrected.
+  redirect("/admin/staff?error="+encodeURIComponent(`The account for ${email} was created, but the invitation email could not be sent (${sent.error}). Correct RESEND_API_KEY in Vercel Production, then retry this invitation to send a fresh link.`));
  }
  redirect("/admin/staff?staffResult=invited&email="+encodeURIComponent(email));
 }
