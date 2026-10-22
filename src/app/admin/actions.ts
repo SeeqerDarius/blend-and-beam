@@ -33,16 +33,13 @@ export async function adjustStock(form:FormData){const {db}=await requireStaff("
 export async function saveOrderNote(form:FormData){const {db}=await requireStaff("orders.manage");const parsed=z.object({p_order:uuid,p_note:z.string().trim().max(2000)}).safeParse({p_order:form.get("order"),p_note:form.get("note")});if(!parsed.success)done("orders","Invalid note.");const {error}=await db.rpc("set_order_note",parsed.data);done("orders",error?"Note could not be saved.":undefined);}
 export async function transitionOrder(form:FormData){const {db}=await requireStaff("orders.manage");const parsed=z.object({p_order:uuid,p_status:z.enum(["confirmed","processing","ready_for_dispatch","shipped","out_for_delivery","delivered","cancelled","returned"]),p_note:z.string().trim().min(5).max(500)}).safeParse({p_order:form.get("order"),p_status:form.get("status"),p_note:form.get("note")});if(!parsed.success)done("orders","A valid status and fulfillment note are required.");const {error}=await db.rpc("transition_order",parsed.data);done("orders",error?"Transition rejected. The status may have changed, or payment is not verified.":undefined);}
 export async function moderateReview(form:FormData){const {db}=await requireStaff("reviews.manage");const parsed=z.object({id:uuid,status:z.enum(["approved","rejected","pending"])}).safeParse({id:form.get("id"),status:form.get("status")});if(!parsed.success)done("reviews","Invalid review.");const {error}=await db.from("reviews").update({status:parsed.data.status}).eq("id",parsed.data.id).select("id").single();done("reviews",error?"Unable to moderate review.":undefined);}
-// Grant is a two-step, honest flow rather than a silent "invite email":
-// try the direct role grant first (works instantly for anyone who already
-// has a confirmed account); only invite when no such account exists, and
-// say plainly whether that invite actually sent. Supabase's admin API
-// creates the pending account and mints the one-time link (generateLink,
-// not inviteUserByEmail) - Resend is what actually delivers it, since
-// Supabase's own mailer is not meant for production sending volume.
+// Only this invitation action can grant a staff role. Customer signup remains
+// separate, and confirmed customer accounts cannot be promoted in place.
+// Supabase creates the pending staff account and one-time link; Resend delivers
+// the email through the verified store domain.
 export async function inviteStaff(form:FormData){
  const {db}=await requireStaff("staff.manage");
- const parsed=z.object({email:z.string().trim().toLowerCase().email().max(254),role:uuid,operation:z.enum(["grant","remove"])}).safeParse({email:form.get("email"),role:form.get("role"),operation:form.get("operation")});
+ const parsed=z.object({email:z.string().trim().toLowerCase().email().max(254),role:uuid,operation:z.enum(["invite","remove"])}).safeParse({email:form.get("email"),role:form.get("role"),operation:form.get("operation")});
  if(!parsed.success)redirect("/admin/staff?error="+encodeURIComponent("Enter a valid email and choose a role."));
  const {email,role,operation}=parsed.data;
  if(operation==="remove"){
@@ -50,23 +47,41 @@ export async function inviteStaff(form:FormData){
   revalidatePath("/admin/staff");
   redirect(error?"/admin/staff?error="+encodeURIComponent("Access could not be revoked. "+(error.message||"")):"/admin/staff?staffResult=revoked&email="+encodeURIComponent(email));
  }
- const {error:grantError}=await db.rpc("assign_staff",{p_email:email,p_role:role,p_remove:false});
- if(!grantError){revalidatePath("/admin/staff");redirect("/admin/staff?staffResult=granted&email="+encodeURIComponent(email));}
- if(!grantError.message?.toLowerCase().includes("confirmed account")){
-  redirect("/admin/staff?error="+encodeURIComponent(grantError.message||"Access could not be granted."));
- }
  const serviceKey=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!serviceKey){
-  redirect("/admin/staff?error="+encodeURIComponent(`${email} doesn't have an account yet, and invites aren't configured on this deployment (missing SUPABASE_SERVICE_ROLE_KEY). Ask them to sign up at /login, then grant their role here once confirmed.`));
+  redirect("/admin/staff?error="+encodeURIComponent("Staff invitations aren't configured on this deployment (missing SUPABASE_SERVICE_ROLE_KEY)."));
  }
  if(!process.env.RESEND_API_KEY){
-  redirect("/admin/staff?error="+encodeURIComponent(`${email} doesn't have an account yet, and invite emails aren't configured on this deployment (missing RESEND_API_KEY). Ask them to sign up at /login, then grant their role here once confirmed.`));
+  redirect("/admin/staff?error="+encodeURIComponent("Staff invitations aren't configured on this deployment (missing RESEND_API_KEY)."));
  }
- const admin=createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,serviceKey);
+ const admin=createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,serviceKey,{auth:{autoRefreshToken:false,persistSession:false}});
  const inviteReturn=new URL("/auth/callback",process.env.NEXT_PUBLIC_APP_URL!);inviteReturn.searchParams.set("next","/account/setup-password");
- const {data:link,error:linkError}=await admin.auth.admin.generateLink({type:"invite",email,options:{redirectTo:inviteReturn.toString()}});
+ const {data:profile,error:profileError}=await admin.from("profiles").select("id").eq("email",email).maybeSingle();
+ if(profileError)redirect("/admin/staff?error="+encodeURIComponent("Could not verify whether this email is already registered. No invitation was sent."));
+ let linkType:"invite"|"magiclink"="invite";
+ let userId:string|undefined;
+ if(profile){
+  const {data:userResult,error:userError}=await admin.auth.admin.getUserById(profile.id);
+  if(userError||!userResult.user)redirect("/admin/staff?error="+encodeURIComponent("Could not verify this account. No invitation was sent."));
+  if(!userResult.user.invited_at)redirect("/admin/staff?error="+encodeURIComponent("This email already has a customer or self-registered account. Staff access requires its own invitation-only account; use a different work email."));
+  // invited_at is set by Supabase's admin invite flow. It distinguishes an
+  // older invite-created account from a customer who registered themselves.
+  const {error:roleWriteError}=await admin.from("user_roles").upsert({user_id:profile.id,role_id:role},{onConflict:"user_id,role_id",ignoreDuplicates:true});
+  if(roleWriteError)redirect("/admin/staff?error="+encodeURIComponent("The invited account's staff role could not be reserved. No email was sent; contact support."));
+  // Reissue the invitation for an unconfirmed invite-created account. If an
+  // older invite was already accepted, use a magic link to continue setup.
+  linkType=userResult.user.email_confirmed_at?"magiclink":"invite";userId=profile.id;
+ }
+ const {data:link,error:linkError}=await admin.auth.admin.generateLink({type:linkType,email,options:{redirectTo:inviteReturn.toString()}});
  if(linkError||!link?.properties?.action_link){
-  redirect("/admin/staff?error="+encodeURIComponent(`Invite could not be created for ${email}: ${linkError?.message||"unknown error"}`));
+  const reason=linkError?.message?.toLowerCase().includes("already registered")?"This email already has an account. Staff access requires an invitation-only account with a different email.":"A fresh staff invitation link could not be created. No email was sent.";
+  redirect("/admin/staff?error="+encodeURIComponent(reason));
+ }
+ if(!userId){
+  userId=link.user?.id;
+  if(!userId)redirect("/admin/staff?error="+encodeURIComponent("The invitation was created without an account reference. No email was sent; contact support."));
+  const {error:roleError}=await admin.from("user_roles").upsert({user_id:userId,role_id:role},{onConflict:"user_id,role_id",ignoreDuplicates:true});
+  if(roleError)redirect("/admin/staff?error="+encodeURIComponent("The invitation account was created, but its staff role could not be reserved. No email was sent; contact support."));
  }
  const sent=await sendEmail({
   to:email,
@@ -77,7 +92,7 @@ export async function inviteStaff(form:FormData){
   // Never put an authentication token in a redirect URL: URLs are retained in
   // browser history, analytics, and server logs. The pending account can be
   // retried after the email provider configuration is corrected.
-  redirect("/admin/staff?error="+encodeURIComponent(`The account for ${email} was created, but the invitation email could not be sent (${sent.error}). Correct RESEND_API_KEY in Vercel Production, then retry this invitation to send a fresh link.`));
+  redirect("/admin/staff?error="+encodeURIComponent(`The invitation for ${email} is ready, but its email could not be sent (${sent.error}). Correct RESEND_API_KEY in Vercel Production, then retry this invitation to send a fresh setup link.`));
  }
  redirect("/admin/staff?staffResult=invited&email="+encodeURIComponent(email));
 }
