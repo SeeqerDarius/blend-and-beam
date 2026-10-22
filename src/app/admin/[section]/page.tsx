@@ -1,15 +1,12 @@
-import {ImageManager} from "@/components/image-manager";
-import {makePrimary} from "../image-actions";
-import {InventoryWorkspace} from "@/components/inventory-workspace";import {ReportsDashboard} from "@/components/reports-dashboard";import {ProductCreateForm} from "@/components/product-create-form";import Image from "next/image";
+import {InventoryWorkspace} from "@/components/inventory-workspace";import {ReportsDashboard} from "@/components/reports-dashboard";import {ProductsWorkspace,type ProductsQuery} from "@/components/products/products-workspace";
 import Link from "next/link";
 import {notFound} from "next/navigation";
 import {requireStaff} from "@/lib/admin-auth";
 import {resources,transitions,GHANA_REGIONS,type Field} from "@/lib/admin-resources";
 import {money} from "@/lib/catalog";
-import {isBackgroundRemovalConfigured} from "@/lib/hosted-background-removal";
 import {describeAudit} from "@/lib/audit";
 import {SubmitButton} from "@/components/submit-button";
-import {collectPayment,saveResource,adjustStock,transitionOrder,moderateReview,inviteStaff,linkCategory,uploadProductImage,saveOrderNote} from "../actions";
+import {collectPayment,saveResource,adjustStock,transitionOrder,moderateReview,inviteStaff,saveOrderNote} from "../actions";
 type Row=Record<string,unknown>;
 const moneyColumns=new Set(["price_minor","compare_at_minor","cost_minor","unit_price_minor","total_minor","amount_minor","fee_minor","minimum_minor","free_shipping_threshold_minor"]);
 function display(v:unknown,column?:string,row?:Row):string{
@@ -24,7 +21,7 @@ function display(v:unknown,column?:string,row?:Row):string{
 }
 // React's purity lint flags Date.now() called directly during render, even
 // in an async server component; keeping it in its own function sidesteps that.
-function Table({rows,columns,edit,images}:{rows:Row[];columns:string[];edit?:string;images?:Map<string,{url:string;alt:string}>}){return <div className="table-scroll"><table className="admin-table"><thead><tr>{images&&<th>Image</th>}{columns.map(c=><th key={c}>{moneyColumns.has(c)?c.replace("_minor","").replaceAll("_"," ")+" (GHS)":c.replaceAll("_"," ")}</th>)}{edit&&<th>Action</th>}</tr></thead><tbody>{rows.length?rows.map((r,i)=>{const image=images?.get(String(r.id));return <tr key={String(r.id??i)}>{images&&<td>{image?<Image src={image.url} alt={image.alt} width={64} height={64} style={{objectFit:"contain",borderRadius:4}}/>:<span>—</span>}</td>}{columns.map(c=><td key={c}>{c==="status"&&typeof r[c]==="string"?<span className={`pill pill-${r[c]}`}>{String(r[c])}</span>:display(r[c],c,r)}</td>)}{edit&&<td><Link href={"/admin/"+edit+"?edit="+r.id}>Edit</Link></td>}</tr>}):<tr><td colSpan={columns.length+(images?1:0)+1}>No records yet.</td></tr>}</tbody></table></div>}
+function Table({rows,columns,edit,editQuery="",labels}:{rows:Row[];columns:string[];edit?:string;editQuery?:string;labels?:Record<string,Map<string,string>>}){return <div className="table-scroll"><table className="admin-table"><thead><tr>{columns.map(c=><th key={c} scope="col">{c==="product_id"?"product":moneyColumns.has(c)?c.replace("_minor","").replaceAll("_"," ")+" (GHS)":c.replaceAll("_"," ")}</th>)}{edit&&<th scope="col">Actions</th>}</tr></thead><tbody>{rows.length?rows.map((r,i)=><tr key={String(r.id??i)}>{columns.map(c=><td key={c}>{c==="status"&&typeof r[c]==="string"?<span className={`pill pill-${r[c]}`}>{String(r[c])}</span>:labels?.[c]?(labels[c].get(String(r[c]))??display(r[c],c,r)):display(r[c],c,r)}</td>)}{edit&&<td><div className="product-row-actions"><Link href={"/admin/"+edit+"?"+editQuery+"edit="+r.id}>Edit</Link></div></td>}</tr>):<tr><td colSpan={columns.length+1}>No records yet.</td></tr>}</tbody></table></div>}
 function Select({name,label,rows,empty=false}:{name:string;label:string;rows:Row[];empty?:boolean}){return <label>{label}<select name={name} required={!empty} defaultValue=""><option value="">{empty?"Base product (no variant)":"Choose…"}</option>{rows.map(r=><option key={String(r.id)} value={String(r.id)}>{String(r.name??r.email??r.id)}</option>)}</select></label>}
 function FieldInput({f,editing,products,brands,section}:{f:Field;editing:Row;products:Row[];brands:Row[];section:string}){
  if(f.key==="product_id")return <select name={f.key} defaultValue={String(editing[f.key]??"")} required><option value="">Choose product…</option>{products.map(p=><option key={String(p.id)} value={String(p.id)}>{String(p.name)}</option>)}</select>;
@@ -52,39 +49,39 @@ audit:{title:"Audit history",permission:"audit.read",table:"audit_logs",columns:
 staff:{title:"Staff access",permission:"staff.manage",table:"user_roles",columns:["user_id","role_id"]},
 reports:{title:"Reports",permission:"reports.read",table:"orders",columns:["id","status","payment_method","payment_status","total_minor","created_at"]}
 };
-export default async function Workspace({params,searchParams}:{params:Promise<{section:string}>;searchParams:Promise<{edit?:string;order?:string;page?:string;saved?:string;error?:string;range?:string;from?:string;to?:string;staffResult?:string;email?:string}>}){
+export default async function Workspace({params,searchParams}:{params:Promise<{section:string}>;searchParams:Promise<ProductsQuery&{edit?:string;order?:string;page?:string;saved?:string;error?:string;range?:string;from?:string;to?:string;staffResult?:string;email?:string;product?:string}>}){
  const {section}=await params;const q=await searchParams;const config=resources[section];const read=readSections[section];if(!config&&!read)notFound();
  if(section==="inventory")return <InventoryWorkspace query={q}/>;
  if(section==="reports")return <ReportsDashboard query={q}/>;
+ if(section==="products")return <ProductsWorkspace query={q}/>;
  const {db}=await requireStaff(config?.permission??read.permission);
  const page=Math.min(10000,Math.max(1,Number(q.page)||1));const start=(Math.floor(page)-1)*50;
  const columns=config?.columns??read.columns;const table=config?.table??read.table;
- // cost_minor is deliberately excluded from every direct SELECT grant so
- // customers can never read it off an active product row; the products
- // section reads through admin_products()/admin_product() instead, which
- // re-checks products.manage before returning the full row.
- const result=section==="products"
-  ?await db.rpc("admin_products",undefined,{count:"exact"}).select(columns.join(",")).order(columns.includes("id")?"id":columns[0],{ascending:false}).range(start,start+49)
-  :await db.from(table).select(columns.join(","),{count:"exact"}).order(columns.includes("created_at")?"created_at":columns.includes("id")?"id":columns[0],{ascending:false}).range(start,start+49);
+ // Variants are reached from a product: ?product=<id> scopes the list and
+ // pre-selects that product when adding a variant.
+ const parentProduct=section==="variants"&&q.product&&/^[0-9a-f-]{36}$/i.test(q.product)?q.product:null;
+ let listQuery=db.from(table).select(columns.join(","),{count:"exact"});
+ if(parentProduct)listQuery=listQuery.filter("product_id","eq",parentProduct);
+ const result=await listQuery.order(columns.includes("created_at")?"created_at":columns.includes("id")?"id":columns[0],{ascending:false}).range(start,start+49);
  if(result.error)throw new Error("Unable to load this workspace. Confirm the security migration has been applied.");
  const rows=(result.data??[]) as unknown as Row[];
- const imageRows=section==="products"&&rows.length?(await db.from("product_images").select("product_id,path,alt_text,sort_order").in("product_id",rows.map(r=>String(r.id))).order("sort_order")).data??[]:[];
- const imageMap=new Map<string,{url:string;alt:string}>();for(const image of imageRows){if(!imageMap.has(image.product_id)){const base=process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/$/,"");imageMap.set(image.product_id,{url:`${base}/storage/v1/object/public/products/${image.path.split("/").map(encodeURIComponent).join("/")}`,alt:image.alt_text});}}
- let editing:Row={};if(config&&q.edit){const id=/^[0-9a-f-]{36}$/i.test(q.edit)?q.edit:null;if(!id)notFound();const result=section==="products"?await db.rpc("admin_product",{p_id:id}):await db.from(config.table).select([...new Set(["id",...config.fields.map(f=>f.key)])].join(",")).eq("id",id).single();if(result.error||!result.data)notFound();editing=result.data as unknown as Row;}
- const needProducts=["products","variants","inventory"].includes(section);
+ let editing:Row=parentProduct?{product_id:parentProduct}:{};if(config&&q.edit){const id=/^[0-9a-f-]{36}$/i.test(q.edit)?q.edit:null;if(!id)notFound();const result=await db.from(config.table).select([...new Set(["id",...config.fields.map(f=>f.key)])].join(",")).eq("id",id).single();if(result.error||!result.data)notFound();editing=result.data as unknown as Row;}
+ const needProducts=["variants","inventory"].includes(section);
  const productResult=needProducts?await db.from("products").select("id,name").order("name").limit(1000):null;
  const products=(productResult?.data??[]) as Row[];
+ const productNames=new Map(products.map(p=>[String(p.id),String(p.name)]));
+ const parentName=parentProduct?productNames.get(parentProduct):undefined;
  const variants=section==="inventory"?(await db.from("product_variants").select("id,name,product_id").limit(1000)).data??[]:[];
- const categories=section==="products"?(await db.from("categories").select("id,name").order("name").limit(1000)).data??[]:[];
- const brands=section==="products"?(await db.from("brands").select("id,name").order("name").limit(1000)).data??[]:[];
- return <><p className="eyebrow">STORE OPERATIONS</p><h1>{config?.title??read.title}</h1>{q.saved&&<p role="status" className="operations-notice">Saved successfully.</p>}{q.error&&<p role="alert" className="form-error">{q.error.slice(0,300)}</p>}
- {section==="products"&&!q.edit&&<ProductCreateForm categories={categories} backgroundRemovalAvailable={isBackgroundRemovalConfigured()}/>}
- {config&&(section!=="products"||q.edit)&&<><p>{config.description}</p><details className="operations-card" open={Boolean(q.edit)}><summary>{q.edit?"Edit record":"Create new"}</summary><form action={saveResource} className="operations-form"><input type="hidden" name="resource" value={section}/><input type="hidden" name="id" value={String(editing.id??"")}/>{config.fields.map(f=>f.type==="region-multiselect"
+ const brands:Row[]=[];
+ const scope=parentProduct?`product=${parentProduct}&`:"";
+ return <><p className="eyebrow">STORE OPERATIONS</p>
+ {parentProduct&&<p><Link className="text-link" href={`/admin/products?edit=${parentProduct}`}>← Back to {parentName??"product"}</Link></p>}
+ <h1>{config?.title??read.title}{parentName?<>: <span className="heading-context">{parentName}</span></>:null}</h1>{q.saved&&<p role="status" className="operations-notice">Saved successfully.</p>}{q.error&&<p role="alert" className="form-error">{q.error.slice(0,300)}</p>}
+ {section==="variants"&&!parentProduct&&<p>To work on one product&apos;s variants, open the product in <Link className="text-link" href="/admin/products">Products</Link> and choose Variants.</p>}
+ {config&&<><p>{config.description}</p><details className="operations-card" open={Boolean(q.edit)||Boolean(parentProduct&&!rows.length)}><summary>{q.edit?"Edit record":"Create new"}</summary><form action={saveResource} className="operations-form"><input type="hidden" name="resource" value={section}/><input type="hidden" name="id" value={String(editing.id??"")}/>{parentProduct&&<input type="hidden" name="return_product" value={parentProduct}/>}{config.fields.map(f=>f.type==="region-multiselect"
   ?<fieldset key={f.key} className="checkbox-fieldset"><legend>{f.label}</legend><FieldInput f={f} editing={editing} products={products} brands={brands} section={section}/>{f.hint&&<small className="field-hint">{f.hint}</small>}</fieldset>
   :<label key={f.key}>{f.label}<FieldInput f={f} editing={editing} products={products} brands={brands} section={section}/>{f.hint&&<small className="field-hint">{f.hint}</small>}</label>
-)}<SubmitButton>Save record</SubmitButton>{q.edit&&<Link href={"/admin/"+section}>Cancel editing</Link>}</form></details></>}
- {section==="products"&&q.edit&&<ProductImages productId={q.edit}/>}
- {section==="products"&&<div className="operations-grid"><details className="operations-card"><summary>Product categories</summary><form action={linkCategory} className="operations-form"><Select name="product" label="Product" rows={products}/><Select name="category" label="Category" rows={categories}/><label>Action<select name="operation"><option value="add">Add category</option><option value="remove">Remove category</option></select></label><SubmitButton>Update category</SubmitButton></form></details><details className="operations-card"><summary>Upload product image</summary><form action={uploadProductImage} className="operations-form"><Select name="product" label="Product" rows={products}/><label>Image<input type="file" name="image" accept="image/png,image/jpeg,image/webp" required/></label><label>Describe image<input name="alt" minLength={3} maxLength={200} required/></label><label>Background<select name="backgroundRemoval" defaultValue={isBackgroundRemovalConfigured()?"remove-bg":"keep"}><option value="remove-bg" disabled={!isBackgroundRemovalConfigured()}>Remove automatically with remove.bg</option><option value="keep">Keep original background</option></select></label>{!isBackgroundRemovalConfigured()&&<p role="status">To enable automatic removal, add REMOVE_BG_API_KEY to Vercel.</p>}<SubmitButton>Upload image</SubmitButton></form></details></div>}
+)}<SubmitButton>Save record</SubmitButton>{q.edit&&<Link href={"/admin/"+section+(parentProduct?`?product=${parentProduct}`:"")}>Cancel editing</Link>}</form></details></>}
  {section==="inventory"&&<><p>Adjustments are atomic and recorded with your account and reason. Stock cannot become negative.</p><form action={adjustStock} className="operations-form operations-card"><Select name="product" label="Product" rows={products}/><Select name="variant" label="Variant (must belong to product)" rows={variants} empty/><label>Quantity change<input name="delta" type="number" step="1" min="-100000" max="100000" required placeholder="10 or -2"/></label><label>Reason<input name="reason" minLength={5} maxLength={500} required/></label><SubmitButton>Record adjustment</SubmitButton></form></>}
  {section==="payments"&&<p>Online payments are provider-verified. Authorized staff can record payment for delivered COD orders from Orders. Refunds must be processed through Paystack; this screen does not issue refunds.</p>}
  {section==="staff"&&<><p>If the person already has a confirmed account, access is granted immediately. Otherwise a real invite email is sent — you&apos;ll see exactly whether it went out. New staff must set up two-factor authentication before access works. You cannot change your own roles.</p>
@@ -93,11 +90,11 @@ export default async function Workspace({params,searchParams}:{params:Promise<{s
  {q.staffResult==="revoked"&&<p role="status" className="operations-notice">✓ Access revoked for {q.email}.</p>}
  <form action={inviteStaff} className="operations-form operations-card"><label>Email<input name="email" type="email" required/></label><Select name="role" label="Role" rows={(await db.from("roles").select("id,name").order("name")).data??[]}/><label>Action<select name="operation"><option value="grant">Grant access (invite if needed)</option><option value="remove">Remove role</option></select></label><SubmitButton>Update staff access</SubmitButton></form></>}
 
- {section==="audit"?<AuditFeed rows={rows} db={db}/>:<Table rows={rows} columns={columns.filter(c=>c!=="id")} edit={config?section:undefined} images={section==="products"?imageMap:undefined}/>}
+ {section==="audit"?<AuditFeed rows={rows} db={db}/>:<Table rows={rows} columns={columns.filter(c=>c!=="id")} edit={config?section:undefined} editQuery={scope} labels={section==="variants"?{product_id:productNames}:undefined}/>}
  {section==="orders"&&rows.map(o=><details className="operations-card" key={String(o.id)}><summary>{String(o.order_number)} — fulfillment &amp; items</summary>{q.order===String(o.id)?<OrderDetail order={o}/>:<Link href={`/admin/orders?page=${page}&order=${o.id}`}>Load items and history</Link>}{o.payment_method==="cod"&&o.status==="delivered"&&o.payment_status==="pending"&&<form action={collectPayment} className="operations-form"><input type="hidden" name="order" value={String(o.id)}/><label>Payment receipt note<input name="note" minLength={5} maxLength={500} required/></label><SubmitButton>Record payment received</SubmitButton></form>}{(transitions[String(o.status)]??[]).length>0&&<form action={transitionOrder} className="operations-form"><input type="hidden" name="order" value={String(o.id)}/><label>Next status<select name="status">{(transitions[String(o.status)]??[]).map(s=><option key={s}>{s}</option>)}</select></label><label>Fulfillment note<input name="note" minLength={5} maxLength={500} required/></label><SubmitButton>Update fulfillment</SubmitButton></form>}</details>)}
  {section==="reviews"&&rows.map(row=><form action={moderateReview} className="operations-card operations-form" key={String(row.id)}><strong>{display(row.title)}</strong><input type="hidden" name="id" value={String(row.id)}/><label>Moderation<select name="status" defaultValue={String(row.status)}><option>pending</option><option>approved</option><option>rejected</option></select></label><SubmitButton>Save moderation</SubmitButton></form>)}
  {section==="inventory"&&<MovementHistory/>}
- <div className="operations-pagination">{page>1&&<Link href={"/admin/"+section+"?page="+(page-1)}>← Previous</Link>}<span>Page {page} · {result.count??0} records</span>{(result.count??0)>start+50&&<Link href={"/admin/"+section+"?page="+(page+1)}>Next →</Link>}</div>
+ <div className="operations-pagination">{page>1&&<Link href={"/admin/"+section+"?"+scope+"page="+(page-1)}>← Previous</Link>}<span>Page {page} · {result.count??0} records</span>{(result.count??0)>start+50&&<Link href={"/admin/"+section+"?"+scope+"page="+(page+1)}>Next →</Link>}</div>
  </>;
 }
 type OrderDetailData={order:{admin_note:string|null};items:Row[];history:Row[];payments:Row[]};
@@ -134,6 +131,3 @@ async function AuditFeed({rows,db}:{rows:Row[];db:Awaited<ReturnType<typeof requ
  })}</ul>;
 }
 async function MovementHistory(){const {db}=await requireStaff("inventory.manage");const result=await db.from("inventory_movements").select("id,inventory_id,quantity_delta,reason,actor_id,created_at").order("created_at",{ascending:false}).limit(50);if(result.error)throw new Error("Unable to load stock history.");return <><h2>Latest stock movements</h2><Table rows={result.data??[]} columns={["inventory_id","quantity_delta","reason","created_at"]}/></>}
-
-
-async function ProductImages({productId}:{productId:string}){const {db}=await requireStaff("products.manage");const {data:images,error}=await db.from("product_images").select("id,path,original_path,alt_text,sort_order").eq("product_id",productId).order("sort_order");if(error)throw new Error("Images could not be loaded.");const base=process.env.NEXT_PUBLIC_SUPABASE_URL;return <section><h2>Manage product images</h2>{(images??[]).map((image,i)=><div key={image.id}><ImageManager id={image.id} url={`${base}/storage/v1/object/public/products/${(image.original_path??image.path).split("/").map(encodeURIComponent).join("/")}`} alt={image.alt_text} backgroundRemovalAvailable={isBackgroundRemovalConfigured()}/>{i===0?<p>Primary image</p>:<form action={makePrimary}><input type="hidden" name="image" value={image.id}/><SubmitButton>Make primary image</SubmitButton></form>}</div>)}</section>}

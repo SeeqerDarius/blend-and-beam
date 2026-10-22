@@ -17,10 +17,14 @@ export async function removeImageBackground(
     );
   }
 
-  // Send an upright image so the cutout lines up with the auto-oriented original.
-  const { orientation } = await sharp(bytes, { limitInputPixels: 25_000_000 }).metadata();
-  const upright = orientation && orientation > 1
-    ? { bytes: await sharp(bytes, { limitInputPixels: 25_000_000 }).autoOrient().jpeg({ quality: 95 }).toBuffer(), mime: "image/jpeg" }
+  // Send an upright JPEG/PNG so the cutout lines up with the auto-oriented
+  // original. Retained originals are WebP, which is re-encoded here.
+  const { orientation, hasAlpha } = await sharp(bytes, { limitInputPixels: 25_000_000 }).metadata();
+  const needsReencode = (orientation && orientation > 1) || mime === "image/webp";
+  const upright = needsReencode
+    ? hasAlpha
+      ? { bytes: await sharp(bytes, { limitInputPixels: 25_000_000 }).autoOrient().png().toBuffer(), mime: "image/png" }
+      : { bytes: await sharp(bytes, { limitInputPixels: 25_000_000 }).autoOrient().jpeg({ quality: 95 }).toBuffer(), mime: "image/jpeg" }
     : { bytes, mime };
 
   const form = new FormData();

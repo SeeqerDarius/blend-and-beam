@@ -1170,6 +1170,7 @@ export type Database = {
         }
         Returns: string
       }
+      delete_product: { Args: { p_id: string }; Returns: string[] }
       expire_product_uploads: {
         Args: never
         Returns: {

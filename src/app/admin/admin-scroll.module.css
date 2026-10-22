@@ -81,6 +81,50 @@
   padding: 10px 12px;
 }
 
+.shell :global(.product-row-actions) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.shell :global(.product-row-actions form) {
+  margin: 0;
+}
+
+.shell :global(.product-delete-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #9c293e;
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.shell :global(.product-delete-button:disabled) {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.shell :global(.product-delete-spinner) {
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: product-delete-spin 0.7s linear infinite;
+}
+
+@keyframes product-delete-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .shell :global(.photo-list) {
   grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 14px;

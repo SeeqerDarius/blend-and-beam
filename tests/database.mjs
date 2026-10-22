@@ -270,6 +270,35 @@ await test('Expired upload sessions cannot commit incomplete products',async()=>
 await test('Mismatched product variant is rejected',async()=>{
  await db.exec('reset role');await db.exec("insert into public.product_variants(id,product_id,name,sku) select '30000000-0000-4000-8000-000000000001',id,'Test variant','VARIANT-TEST' from public.products where sku='IMAGE-TEST'");await as(owner,'aal2');await reject("select public.adjust_stock($1,5,'Mismatch test','30000000-0000-4000-8000-000000000001')",[product]);
 });
+await test('Guarded delete refuses products with order history and requires staff MFA',async()=>{
+ await as(customer);await reject('select public.delete_product($1)',[product]);
+ await as(owner);await reject('select public.delete_product($1)',[product]);
+ await as(owner,'aal2');
+ await assert.rejects(db.query('select public.delete_product($1)',[product]),/order history/);
+ await db.exec('reset role');assert.equal((await db.query('select count(*)::int n from public.products where id=$1',[product])).rows[0].n,1);
+});
+await test('Staff can reorder images; customers cannot touch them',async()=>{
+ await db.exec('reset role');
+ const pid=(await db.query("select id from public.products where sku='IMAGE-TEST'")).rows[0].id;
+ await db.query("insert into public.product_images(product_id,path,original_path,alt_text,sort_order) values($1,'p/two.webp','p/two-original.webp','Second test view',1)",[pid]);
+ // A customer's update is either refused outright or matches no rows under RLS.
+ await as(customer);const attempt=await db.query("update public.product_images set sort_order=9 where product_id=$1 returning id",[pid]).catch(()=>({rows:[]}));
+ assert.equal(attempt.rows.length,0);
+ await as(owner,'aal2');
+ await db.query("update public.product_images set sort_order=case when sort_order=0 then 1 else 0 end where product_id=$1",[pid]);
+ assert.deepEqual((await db.query('select path from public.product_images where product_id=$1 order by sort_order',[pid])).rows.map(r=>r.path)[0],'p/two.webp');
+});
+await test('Guarded delete removes an unsold product with its images and variants and returns its files',async()=>{
+ await as(owner,'aal2');
+ const pid=(await db.query("select id from public.products where sku='IMAGE-TEST'")).rows[0].id;
+ const paths=(await db.query('select public.delete_product($1) paths',[pid])).rows[0].paths;
+ assert.ok(paths.includes('p/two.webp')&&paths.includes('p/two-original.webp'));
+ assert.ok(paths.some(p=>p.endsWith('/one.webp'))&&paths.some(p=>p.endsWith('/one-original.webp')));
+ await db.exec('reset role');
+ for(const t of ['products','product_images','product_variants'])assert.equal((await db.query(`select count(*)::int n from public.${t} where ${t==='products'?'id':'product_id'}=$1`,[pid])).rows[0].n,0);
+ assert.ok((await db.query("select count(*)::int n from public.audit_logs where entity_type='products' and action='delete' and entity_id=$1",[pid])).rows[0].n>=1);
+ await as(owner,'aal2');await assert.rejects(db.query('select public.delete_product($1)',[pid]),/not found/i);
+});
 console.log(
   `${passed} database checks passed; migrations replayed idempotently.`,
 );
