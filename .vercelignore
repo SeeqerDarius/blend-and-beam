@@ -1,0 +1,12 @@
+# CLI deployments upload only what the app needs to build and run.
+# Internal documentation, database SQL, local tooling and secrets stay local.
+# Paths are anchored to the project root so src/lib/supabase is still uploaded.
+/*.md
+/supabase
+/tests
+/scripts
+/.claude
+/.env
+/.env.*
+!/.env.example
+/*.tsbuildinfo

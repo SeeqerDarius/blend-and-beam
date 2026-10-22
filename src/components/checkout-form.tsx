@@ -201,6 +201,7 @@ export function CheckoutForm({ zones }: { zones: Zone[] }) {
         </span>
         {busy && (
           <span className="submit-progress" role="status">
+            <span className="loading-spinner" aria-hidden="true" />
             Placing order…
           </span>
         )}
