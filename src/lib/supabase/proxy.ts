@@ -4,9 +4,14 @@ export async function updateSession(request:NextRequest){
  let response=NextResponse.next({request});
  const db=createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,{cookies:{getAll:()=>request.cookies.getAll(),setAll(items){items.forEach(({name,value})=>request.cookies.set(name,value));response=NextResponse.next({request});items.forEach(({name,value,options})=>response.cookies.set(name,value,options));}}});
  const path=request.nextUrl.pathname;
+ if(path==="/admin/login"||path==="/admin/setup-password"){
+  response.headers.set("Cache-Control","private, no-store");
+  response.headers.set("X-Robots-Tag","noindex, nofollow");
+  return response;
+ }
  const {data:{user},error}=await db.auth.getUser();
  function go(pathname:string,next?:string){const url=request.nextUrl.clone();url.pathname=pathname;url.search="";if(next)url.searchParams.set("next",next);const out=NextResponse.redirect(url);response.cookies.getAll().forEach(c=>out.cookies.set(c));out.headers.set("Cache-Control","private, no-store");return out;}
- if(!user||error)return go("/login",path);
+ if(!user||error)return go(path.startsWith("/admin")?"/admin/login":"/login",path);
  if(path==="/admin"||path.startsWith("/admin/")){
   const member=await db.rpc("staff_membership");
   if(member.error||member.data!==true)return go("/access-denied");

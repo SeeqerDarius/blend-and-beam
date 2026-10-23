@@ -1,20 +1,26 @@
 "use server";
 import {redirect} from "next/navigation";
 import {createClient} from "@/lib/supabase/server";
-import {credentials,signupCredentials,safeNext,signInErrorMessage} from "@/lib/auth-validation";
+import {credentials,signupCredentials,safeCustomerNext,signInErrorMessage} from "@/lib/auth-validation";
 export async function signIn(form:FormData){
  const values=credentials.safeParse({email:form.get("email"),password:form.get("password")});
  if(!values.success)redirect("/login?error=Enter a valid email and password");
  const db=await createClient();const {error}=await db.auth.signInWithPassword(values.data);
  if(error)redirect("/login?error="+encodeURIComponent(signInErrorMessage(error)));
- const {data:member}=await db.rpc("staff_membership");redirect(member===true?"/admin":safeNext(form.get("next")));
+ const {data:member,error:membershipError}=await db.rpc("staff_membership");
+ if(membershipError||member===true){await db.auth.signOut({scope:"local"});redirect("/login?error="+encodeURIComponent(membershipError?"Account access could not be verified. Please try again.":"Staff accounts must sign in through the admin login page."));}
+ redirect(safeCustomerNext(form.get("next")));
 }
 export async function signUp(form:FormData){
  const values=signupCredentials.safeParse({email:form.get("email"),password:form.get("password")});
  if(!values.success)redirect("/login?error=Use a valid email and a password of at least 12 characters.");
  const db=await createClient();const {data,error}=await db.auth.signUp({...values.data,options:{emailRedirectTo:`${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`}});
  if(error)redirect("/login?error=We could not start registration. Please retry, or use Forgot password if you already have an account.");
- if(data.session){const {data:member}=await db.rpc("staff_membership");redirect(member===true?"/account/security?next=/admin":"/account?welcome=1");}
+ if(data.session){
+  const {data:member,error:membershipError}=await db.rpc("staff_membership");
+  if(membershipError||member===true){await db.auth.signOut({scope:"local"});redirect("/login?error="+encodeURIComponent(membershipError?"Account access could not be verified. Please try again.":"Use your staff invitation and the admin login page to access staff tools."));}
+  redirect("/account?welcome=1");
+ }
  redirect("/login?message=Registration started. Check your inbox for the confirmation link before signing in. If it does not arrive, use Forgot password or contact support.");
 }
 export async function requestPasswordReset(form:FormData){

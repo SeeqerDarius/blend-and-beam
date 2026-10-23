@@ -55,7 +55,7 @@ export async function inviteStaff(form:FormData){
   redirect("/admin/staff?error="+encodeURIComponent("Staff invitations aren't configured on this deployment (missing RESEND_API_KEY)."));
  }
  const admin=createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,serviceKey,{auth:{autoRefreshToken:false,persistSession:false}});
- const inviteReturn=new URL("/auth/callback",process.env.NEXT_PUBLIC_APP_URL!);inviteReturn.searchParams.set("next","/account/setup-password");
+ const inviteReturn=new URL("/auth/callback",process.env.NEXT_PUBLIC_APP_URL!);inviteReturn.searchParams.set("next","/admin/setup-password");
  const {data:profile,error:profileError}=await admin.from("profiles").select("id").eq("email",email).maybeSingle();
  if(profileError)redirect("/admin/staff?error="+encodeURIComponent("Could not verify whether this email is already registered. No invitation was sent."));
  let linkType:"invite"|"magiclink"="invite";
@@ -86,7 +86,7 @@ export async function inviteStaff(form:FormData){
  const sent=await sendEmail({
   to:email,
   subject:"You're invited to the Blend & Beam team",
-  html:`<p>You've been invited to join the Blend & Beam admin team.</p><p><a href="${link.properties.action_link}">Accept the invite and set your password</a></p><p>If you weren't expecting this, you can ignore this email.</p>`,
+  html:`<p>You've been invited to join the Blend & Beam admin team.</p><p><a href="${link.properties.action_link}">Accept your staff invite and set your password</a></p><p>After setting your password, you'll set up two-step verification. For future sign-ins, use the <a href="${new URL("/admin/login",process.env.NEXT_PUBLIC_APP_URL!).toString()}">Blend &amp; Beam admin login</a>.</p><p>If you weren't expecting this, you can ignore this email.</p>`,
  });
  if(!sent.ok){
   // Never put an authentication token in a redirect URL: URLs are retained in
