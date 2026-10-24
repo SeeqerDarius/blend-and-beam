@@ -77,6 +77,16 @@ export async function inviteStaff(form:FormData){
   const reason=linkError?.message?.toLowerCase().includes("already registered")?"This email already has an account. Staff access requires an invitation-only account with a different email.":"A fresh staff invitation link could not be created. No email was sent.";
   redirect("/admin/staff?error="+encodeURIComponent(reason));
  }
+ // Supabase can return an action link pointed at the configured Site URL when
+ // a redirect is rejected or the generated link omits the requested callback.
+ // Pin the generated verification link to our staff setup callback so invitees
+ // cannot accidentally land on the customer storefront.
+ const actionLink=new URL(link.properties.action_link);
+ const supabaseOrigin=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).origin;
+ if(actionLink.origin!==supabaseOrigin||actionLink.pathname!=="/auth/v1/verify"){
+  redirect("/admin/staff?error="+encodeURIComponent("The staff invitation link had an unexpected destination. No email was sent."));
+ }
+ actionLink.searchParams.set("redirect_to",inviteReturn.toString());
  if(!userId){
   userId=link.user?.id;
   if(!userId)redirect("/admin/staff?error="+encodeURIComponent("The invitation was created without an account reference. No email was sent; contact support."));
@@ -86,7 +96,7 @@ export async function inviteStaff(form:FormData){
  const sent=await sendEmail({
   to:email,
   subject:"You're invited to the Blend & Beam team",
-  html:`<p>You've been invited to join the Blend & Beam admin team.</p><p><a href="${link.properties.action_link}">Accept your staff invite and set your password</a></p><p>After setting your password, you'll set up two-step verification. For future sign-ins, use the <a href="${new URL("/admin/login",process.env.NEXT_PUBLIC_APP_URL!).toString()}">Blend &amp; Beam admin login</a>.</p><p>If you weren't expecting this, you can ignore this email.</p>`,
+  html:`<p>You've been invited to join the Blend & Beam admin team.</p><p><a href="${actionLink.toString()}">Accept your staff invite and set your password</a></p><p>After setting your password, you'll set up two-step verification. For future sign-ins, use the <a href="${new URL("/admin/login",process.env.NEXT_PUBLIC_APP_URL!).toString()}">Blend &amp; Beam admin login</a>.</p><p>If you weren't expecting this, you can ignore this email.</p>`,
  });
  if(!sent.ok){
   // Never put an authentication token in a redirect URL: URLs are retained in
